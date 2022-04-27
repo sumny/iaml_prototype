@@ -1,0 +1,4 @@
+^LICENSE\.md$
+README.*
+README_files
+^man-roxygen$
