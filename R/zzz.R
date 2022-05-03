@@ -18,6 +18,7 @@
   # add iaml to tuner dictionary
   x = utils::getFromNamespace("mlr_tuners", ns = "mlr3tuning")
   x$add("iaml", TunerIAML)
+  x$add("iaml_ea", TunerIAMLEA)
 
   # add iaml to measures dictionary
   x = utils::getFromNamespace("mlr_measures", ns = "mlr3")

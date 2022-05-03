@@ -57,6 +57,7 @@ TunerIAML = R6Class("TunerIAML",
 
   private = list(
     .optimize = function(inst) {
+      # FIXME: bug in mlr3? learner param set is not pertained correctly, therefore values are always the same, only affects batch size > 1
       batch_size = self$param_set$values$batch_size
       select_id = self$param_set$values$select_id
       interaction_id = self$param_set$values$interaction_id

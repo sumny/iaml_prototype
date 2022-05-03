@@ -44,3 +44,6 @@ sample_m = function(I) {
   m
 }
 
+mult_max_to_min = function(codomain) {
+  ifelse(map_lgl(codomain$tags, has_element, "minimize"), 1, -1)
+}

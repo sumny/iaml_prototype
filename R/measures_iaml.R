@@ -54,6 +54,7 @@ MeasureIAMLSelectedFeatures = R6Class("MeasureIAMLSelectedFeatures",
 
   private = list(
     .score = function(prediction, task, learner, ...) {
+      # FIXME: bug in mlr3? learner param set is not pertained correctly, therefore values are always the same, therefore fix this in Tuners for now
       n_selected = attr(learner$param_set$values[[self$param_set$values$select_id]], "n_selected")
       n_selected_total = attr(learner$param_set$values[[self$param_set$values$select_id]], "n_selected_total")
 
@@ -121,6 +122,7 @@ MeasureIAMLSelectedInteractions = R6Class("MeasureIAMLSelectedInteractions",
 
   private = list(
     .score = function(prediction, task, learner, ...) {
+      # FIXME: bug in mlr3? learner param set is not pertained correctly, therefore values are always the same, therefore fix this in Tuners for now
       n_interactions = attr(learner$param_set$values[[self$param_set$values$interaction_id]], "n_interactions")
       n_interactions_total = attr(learner$param_set$values[[self$param_set$values$interaction_id]], "n_interactions_total")
       if (self$param_set$values$normalize) {
@@ -187,6 +189,7 @@ MeasureIAMLSelectedNonMonotone = R6Class("MeasureIAMLSelectedNonMonotone",
 
   private = list(
     .score = function(prediction, task, learner, ...) {
+      # FIXME: bug in mlr3? learner param set is not pertained correctly, therefore values are always the same, therefore fix this in Tuners for now
       n_non_monotone = attr(learner$param_set$values[[self$param_set$values$monotone_id]], "n_non_monotone")
       n_non_monotone_total = attr(learner$param_set$values[[self$param_set$values$monotone_id]], "n_non_monotone_total")
       if (self$param_set$values$normalize) {
