@@ -41,7 +41,7 @@ TunerIAML = R6Class("TunerIAML",
         select_id = p_uty(tags = "required"),
         interaction_id = p_uty(tags = "required"),
         monotone_id = p_uty(tags = "required"),
-        batch_size = p_int(default = 1L, tags = "required")
+        batch_size = p_int(default = 1L, lower = 1L, upper = 1L, tags = "required")  # FIXME: currently only batch_size of 1 see below
       )
       param_set$values = list(select_id = "select.selector", interaction_id = "classif.xgboost.interaction_constraints", monotone_id = "classif.xgboost.monotone_constraints", batch_size = 1L)
       super$initialize(
@@ -92,7 +92,7 @@ TunerIAML = R6Class("TunerIAML",
           I = map(interaction_constraints, function(x) x - 1L)
           attr(I, "n_interactions") = n_interactions
           attr(I, "n_interactions_total") = n_interactions_total
-          n_non_monotone = sum(m != 0)
+          n_non_monotone = sum(m == 0)
           n_non_monotone_total = length(m)
           attr(m, "n_non_monotone") = n_non_monotone
           attr(m, "n_non_monotone_total") = n_non_monotone_total
