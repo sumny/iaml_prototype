@@ -107,10 +107,10 @@ measures = list(msr("classif.ce"),
                     interaction_id = "classif.xgboost.interaction_constraints"),  # param id
                 msr("iaml_selected_non_monotone",
                     monotone_id = "classif.xgboost.monotone_constraints"))  # param id
-terminator = trm("evals", n_evals = 100L)
+terminator = trm("evals", n_evals = 200L)
 
 search_space = ps(
-  classif.xgboost.nrounds = p_dbl(lower = 1, upper = log(2000), tags = c("int", "log"),
+  classif.xgboost.nrounds = p_dbl(lower = 1, upper = log(500), tags = c("int", "log"),
                                   trafo = function(x) as.integer(round(exp(x)))),
   classif.xgboost.eta = p_dbl(lower = log(1e-4), upper = 0, tags = "log",
                               trafo = function(x) exp(x)),
@@ -140,11 +140,26 @@ instance = TuningInstanceMultiCrit$new(
   search_space
 )
 
-tuner = tnr("iaml_ea")  # see ?TunerIAML
+tuner = tnr("iaml_ea")  # see ?TunerIAMLEA
 tuner$param_set$values$select_id = "select.selector"  # param id
 tuner$param_set$values$interaction_id = "classif.xgboost.interaction_constraints"  # param id
 tuner$param_set$values$monotone_id = "classif.xgboost.monotone_constraints"  # param id
 
 tuner$optimize(instance)
-instance$archive$best()  # Pareto optimal solutions
+ea = instance$archive$best()  # Pareto optimal solutions
+ea_data = copy(instance$archive$data)
+
+instance$archive$clear()
+tuner = tnr("iaml")  # see ?TunerIAML
+tuner$param_set$values$select_id = "select.selector"  # param id
+tuner$param_set$values$interaction_id = "classif.xgboost.interaction_constraints"  # param id
+tuner$param_set$values$monotone_id = "classif.xgboost.monotone_constraints"  # param id
+
+tuner$optimize(instance)
+rs = instance$archive$best()  # Pareto optimal solutions
+rs_data = copy(instance$archive$data)
+
+nadir = apply(rbind(ea_data[, instance$archive$cols_y, with = FALSE], rs_data[, instance$archive$cols_y, with = FALSE]), MARGIN = 2L, FUN = function(x) max(x) + 1)
+ea_hv = emoa::dominated_hypervolume(t(ea[, instance$archive$cols_y, with = FALSE]), ref = nadir)
+rs_hv = emoa::dominated_hypervolume(t(rs[, instance$archive$cols_y, with = FALSE]), ref = nadir)
 ```
