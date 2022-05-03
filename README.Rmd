@@ -140,7 +140,7 @@ instance = TuningInstanceMultiCrit$new(
   search_space
 )
 
-tuner = tnr("iaml")  # see ?TunerIAML
+tuner = tnr("iaml_ea")  # see ?TunerIAML
 tuner$param_set$values$select_id = "select.selector"  # param id
 tuner$param_set$values$interaction_id = "classif.xgboost.interaction_constraints"  # param id
 tuner$param_set$values$monotone_id = "classif.xgboost.monotone_constraints"  # param id
