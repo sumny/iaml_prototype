@@ -41,10 +41,9 @@ TunerIAMLEA = R6Class("TunerIAMLEA",
         select_id = p_uty(tags = "required"),
         interaction_id = p_uty(tags = "required"),
         monotone_id = p_uty(tags = "required"),
-        lambda = p_int(default = 10L, tags = "required"),
         mu = p_int(default = 100L, tags = "required")
       )
-      param_set$values = list(select_id = "select.selector", interaction_id = "classif.xgboost.interaction_constraints", monotone_id = "classif.xgboost.monotone_constraints", lambda = 10L, mu = 100L)
+      param_set$values = list(select_id = "select.selector", interaction_id = "classif.xgboost.interaction_constraints", monotone_id = "classif.xgboost.monotone_constraints")
       super$initialize(
         param_set = param_set,
         param_classes = c("ParamDbl", "ParamFct", "ParamInt", "ParamLgl", "ParamUty"),
@@ -58,9 +57,7 @@ TunerIAMLEA = R6Class("TunerIAMLEA",
 
   private = list(
     .optimize = function(inst) {
-      # mu + lambda
       # parent selection: bbotk::nds_selection
-      lambda = self$param_set$values$lambda  # FIXME: must be even and >= 2
       mu = self$param_set$values$mu
       select_id = self$param_set$values$select_id
       interaction_id = self$param_set$values$interaction_id
@@ -97,18 +94,16 @@ TunerIAMLEA = R6Class("TunerIAMLEA",
 
       repeat {  # iterate until we have an exception from eval_batch
         gen = gen + 1
-        all_data = inst$archive$data[status == "alive"]
-        data = all_data[, inst$archive$cols_y, with = FALSE]
+        data = inst$archive$data[, inst$archive$cols_y, with = FALSE]
         stopifnot(colnames(data) == inst$objective$codomain$ids())
-        data[, id := seq_len(.N)]
-        ys = t(t(data[, - "id"]) * mult_max_to_min(inst$objective$codomain))
+        ys = t(t(data) * mult_max_to_min(inst$objective$codomain))
         nadir = apply(ys, MARGIN = 2L, FUN = function(x) max(x) + 1)
+        alive_ids = which(inst$archive$data$status == "alive")
 
-        children = map_dtr(seq_len(lambda / 2), function(i) {
-          candidate_ids = sample(nrow(ys), size = lambda, replace = FALSE)
-          candidate_ys = ys[candidate_ids, ]
-          parent_ids = candidate_ids[nds_selection(t(candidate_ys), n_select = 2L, ref_point = nadir, minimize = TRUE)]
-          parents = transpose_list(all_data[parent_ids, c("iaml", inst$archive$cols_x), with = FALSE])
+        children = {
+          parent_id1 = binary_tournament(ys, alive_ids, nadir)
+          parent_id2 = binary_tournament(ys, alive_ids, nadir)
+          parents = transpose_list(copy(inst$archive$data[c(parent_id1, parent_id2), c("iaml", inst$archive$cols_x), with = FALSE]))
 
           # param_space
           # Gaussian or uniform discrete mutation for HPs
@@ -143,8 +138,7 @@ TunerIAMLEA = R6Class("TunerIAMLEA",
           parents[[2L]][["iaml"]] = iaml2
 
           as.data.table(transpose_list(parents))
-        })
-        stopifnot(nrow(children) == lambda)
+        }
         children[, generation := gen]
         
         # see FIXME: above
@@ -152,7 +146,7 @@ TunerIAMLEA = R6Class("TunerIAMLEA",
           inst$eval_batch(children[i, ])
         }
 
-        # NSGA-II stuff
+        # NSGA-II stuff for survival
         # could do this only based on gen and gen - 1L
         ys = t(t(inst$archive$data[, inst$archive$cols_y, with = FALSE]) * mult_max_to_min(inst$objective$codomain))
         rankings = emoa::nds_rank(t(ys))  # non-dominated fronts
@@ -202,5 +196,11 @@ mutate = function(value, param, sdx) {
     value = sample(param$levels, size = 1L)
   }
   value
+}
+
+binary_tournament = function(ys, alive_ids, nadir) {
+  ids = sample(alive_ids, size = 2L, replace = FALSE)
+  ys_ids = ys[ids, ]
+  ids[nds_selection(t(ys[ids, ]), n_select = 1L, ref_point = nadir, minimize = TRUE)]
 }
 

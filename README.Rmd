@@ -91,16 +91,18 @@ Note that measures require ids of parameters of the learner that allow for the f
 interaction and monotonicity constraints.
 
 ```{r, eval = FALSE}
-library(iaml)
+#library(iaml)
 library(mlr3)
 library(mlr3tuning)
 library(mlr3learners)
 library(mlr3pipelines)
-library(mlr3mbo)
-# FIXME:
+devtools::load_all()
+
+set.seed(2906)
 task = tsk("spam")
 learner = as_learner(po("select") %>>% lrn("classif.xgboost"))  # GraphLearner via mlr3pipelines
 resampling = rsmp("cv", folds = 3L)
+resampling$instantiate(task)
 measures = list(msr("classif.ce"),
                 msr("iaml_selected_features",
                     select_id = "select.selector"),  # param id
@@ -108,7 +110,7 @@ measures = list(msr("classif.ce"),
                     interaction_id = "classif.xgboost.interaction_constraints"),  # param id
                 msr("iaml_selected_non_monotone",
                     monotone_id = "classif.xgboost.monotone_constraints"))  # param id
-terminator = trm("evals", n_evals = 1000L)
+terminator = trm("evals", n_evals = 20L)
 
 search_space = ps(
   classif.xgboost.nrounds = p_dbl(lower = 1, upper = log(500), tags = c("int", "log"),
@@ -141,30 +143,11 @@ instance = TuningInstanceMultiCrit$new(
   search_space
 )
 
-spam = map_dtr(1:10, function(r) {
-instance$archive$clear()
-tuner = tnr("iaml_ea", mu = 200, lambda = 20)  # see ?TunerIAMLEA
+tuner = tnr("iaml_ea", mu = 10)  # see ?TunerIAMLEA
 tuner$param_set$values$select_id = "select.selector"  # param id
 tuner$param_set$values$interaction_id = "classif.xgboost.interaction_constraints"  # param id
 tuner$param_set$values$monotone_id = "classif.xgboost.monotone_constraints"  # param id
 
 tuner$optimize(instance)
-ea = instance$archive$best()  # Pareto optimal solutions
-ea_data = copy(instance$archive$data)
-
-instance$archive$clear()
-tuner = tnr("iaml")  # see ?TunerIAML
-tuner$param_set$values$select_id = "select.selector"  # param id
-tuner$param_set$values$interaction_id = "classif.xgboost.interaction_constraints"  # param id
-tuner$param_set$values$monotone_id = "classif.xgboost.monotone_constraints"  # param id
-
-tuner$optimize(instance)
-rs = instance$archive$best()  # Pareto optimal solutions
-rs_data = copy(instance$archive$data)
-
-nadir = apply(rbind(ea_data[, instance$archive$cols_y, with = FALSE], rs_data[, instance$archive$cols_y, with = FALSE]), MARGIN = 2L, FUN = function(x) max(x) + 1)
-ea_hv = emoa::dominated_hypervolume(t(ea[, instance$archive$cols_y, with = FALSE]), ref = nadir)
-rs_hv = emoa::dominated_hypervolume(t(rs[, instance$archive$cols_y, with = FALSE]), ref = nadir)
-data.table(ea_hv = ea_hv, rs_hv = rs_hv, ea_data = list(ea_data), rs_data = list(rs_data), repl = r)
-}, .fill = TRUE)
+pareto = instance$archive$best()  # Pareto optimal solutions
 ```

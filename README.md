@@ -88,15 +88,18 @@ learner that allow for the feature selection and specification of
 interaction and monotonicity constraints.
 
 ``` r
-library(iaml)
+#library(iaml)
 library(mlr3)
 library(mlr3tuning)
 library(mlr3learners)
 library(mlr3pipelines)
-library(mlr3mbo)
+devtools::load_all()
+
+set.seed(2906)
 task = tsk("spam")
 learner = as_learner(po("select") %>>% lrn("classif.xgboost"))  # GraphLearner via mlr3pipelines
 resampling = rsmp("cv", folds = 3L)
+resampling$instantiate(task)
 measures = list(msr("classif.ce"),
                 msr("iaml_selected_features",
                     select_id = "select.selector"),  # param id
@@ -104,10 +107,10 @@ measures = list(msr("classif.ce"),
                     interaction_id = "classif.xgboost.interaction_constraints"),  # param id
                 msr("iaml_selected_non_monotone",
                     monotone_id = "classif.xgboost.monotone_constraints"))  # param id
-terminator = trm("evals", n_evals = 100L)
+terminator = trm("evals", n_evals = 20L)
 
 search_space = ps(
-  classif.xgboost.nrounds = p_dbl(lower = 1, upper = log(2000), tags = c("int", "log"),
+  classif.xgboost.nrounds = p_dbl(lower = 1, upper = log(500), tags = c("int", "log"),
                                   trafo = function(x) as.integer(round(exp(x)))),
   classif.xgboost.eta = p_dbl(lower = log(1e-4), upper = 0, tags = "log",
                               trafo = function(x) exp(x)),
@@ -137,11 +140,11 @@ instance = TuningInstanceMultiCrit$new(
   search_space
 )
 
-tuner = tnr("iaml")  # see ?TunerIAML
+tuner = tnr("iaml_ea", mu = 10)  # see ?TunerIAMLEA
 tuner$param_set$values$select_id = "select.selector"  # param id
 tuner$param_set$values$interaction_id = "classif.xgboost.interaction_constraints"  # param id
 tuner$param_set$values$monotone_id = "classif.xgboost.monotone_constraints"  # param id
 
 tuner$optimize(instance)
-instance$archive$best()  # Pareto optimal solutions
+pareto = instance$archive$best()  # Pareto optimal solutions
 ```

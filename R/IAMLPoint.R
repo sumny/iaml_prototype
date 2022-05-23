@@ -106,6 +106,7 @@ IAMLPoint = R6Class("IAMLPoint",
     },
 
     mutate = function() {
+      # FIXME: error handling if all are now the unselected group
       # create a new group, taking members from 1 (monotone_eqcs then 0)
       # destroy a group, put members in 1
       # shuffle membership
@@ -147,6 +148,7 @@ IAMLPoint = R6Class("IAMLPoint",
     },
 
     crossover = function(parent2, crossing_sections) {
+      # FIXME: error handling if all are now the unselected group
       # parent1 is self$groups
       # parent2 is $groups of another IAMLPoint
       # GGA, groups are {not_selected, eqc1, ..., eqcl} not_selected must be the first
