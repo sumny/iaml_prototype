@@ -73,37 +73,17 @@ TunerIAMLEA = R6Class("TunerIAMLEA",
       names(sds) = names(which(param_space$is_number))
 
       task = inst$objective$task
-      features = task$feature_names
-      n_features = length(task$feature_names)
 
       # initial population
       population = generate_design_random(param_space, n = mu)$data  # param_space
-
       sIm = map_dtr(seq_len(mu), function(i) {  # sIm space
-        n_selected = sample(seq_len(n_features), size = 1L)
-        selected_features = sample(features, size = n_selected, replace = FALSE)
-        interactions = sample_interactions_random(selected_features)
-        eqcs = get_eqcs(interactions)
-        s = selector_name(selected_features)
-        attr(s, "s_bit") = as.integer(features %in% selected_features)
-        attr(s, "n_selected") = n_selected
-        attr(s, "n_selected_total") = n_features
-        I = list(I = get_matrix(eqcs), classes = map(eqcs, function(x) match(x, selected_features)))
-        m = sample_m(I)
-        interaction_constraints = I$classes
-        n_interactions = sum(I$I)
-        n_interactions_total = nrow(I$I) ^ 2L
-        I = map(interaction_constraints, function(x) x - 1L)
-        attr(I, "I_representation") = interactions
-        attr(I, "n_interactions") = n_interactions
-        attr(I, "n_interactions_total") = n_interactions_total
-        n_non_monotone = sum(m == 0)
-        n_non_monotone_total = length(m)
-        attr(m, "n_non_monotone") = n_non_monotone
-        attr(m, "n_non_monotone_total") = n_non_monotone_total
-        data.table(s = list(s), I = list(I), m = list(m))
+        iaml = IAMLPoint$new(task)
+        data.table(iaml = list(iaml),
+                   s = list(iaml$create_selector()),
+                   I = list(iaml$create_interaction_constraints()),
+                   m = list(iaml$create_monotonicity_constraints()))
       })
-      colnames(sIm) = c(select_id, interaction_id, monotone_id)
+      colnames(sIm) = c("iaml", select_id, interaction_id, monotone_id)
 
       population = cbind(population, sIm)
       gen = 0
@@ -128,84 +108,41 @@ TunerIAMLEA = R6Class("TunerIAMLEA",
           candidate_ids = sample(nrow(ys), size = lambda, replace = FALSE)
           candidate_ys = ys[candidate_ids, ]
           parent_ids = candidate_ids[nds_selection(t(candidate_ys), n_select = 2L, ref_point = nadir, minimize = TRUE)]
-          parents = all_data[parent_ids, inst$archive$cols_x, with = FALSE]
+          parents = transpose_list(all_data[parent_ids, c("iaml", inst$archive$cols_x), with = FALSE])
 
           # param_space
           # Gaussian or uniform discrete mutation for HPs
-          for (j in seq_len(nrow(parents))) {
+          for (j in 1:2) {
             for(param_id in param_ids) {
-              parents[j, eval(param_id) := mutate(get(param_id), param = param_space$params[[param_id]], sdx = sds[[param_id]])]
+              parents[[j]][[param_id]] = mutate(parents[[j]][[param_id]], param = param_space$params[[param_id]], sdx = sds[[param_id]])
             }
           }
-
           # Uniform crossover for HPS; p could be individual for each HP
           p_param_space_cross = 0.2  # FIXME: HP
           crossover_ps = runif(length(param_ids), min = 0, max = 1)
           param_ids_to_cross = param_ids[which(crossover_ps <= p_param_space_cross)]
-          tmp = parents[1L, ]
+          tmp = parents[[1L]]
           for (param_id in param_ids_to_cross) {
-            parents[1L, eval(param_id) := parents[2L, ][[param_id]]]
-            parents[2L, eval(param_id) := tmp[[param_id]]]
+            parents[[1L]][[param_id]] = parents[[2L]][[param_id]]
+            parents[[2L]][[param_id]] = tmp[[param_id]]
           }
 
           # sIm space
-          # if we do s, we also do I and m, if we do I, we also do m; due to hierarchies
-          to_do = sample(c("s", "I", "m", "skip"), size = 1L, prob = c(0.2, 0.15, 0.1, 0.55))
-          if (to_do == "s") {
-            # s mutation
-            for (j in seq_len(nrow(parents))) {
-              parents[j, eval(select_id) := mutate_s(get(select_id), features = features)]
-            }
-            # s crossover
-            crossovers = crossover_s(parents[1L, ][[select_id]], parents[2L, ][[select_id]], features = features)
-            parents[1L, ][[select_id]] = crossovers[1L]
-            parents[2L, ][[select_id]] = crossovers[2L]
+          iaml1 = parents[[1L]][["iaml"]]$clone(deep = TRUE)
+          iaml2 = parents[[2L]][["iaml"]]$clone(deep = TRUE)
 
-            # fix I, m
-            selected_features1 = features[as.logical(attr(parents[1L, ][[select_id]][[1L]], "s_bit"))]
-            selected_features2 = features[as.logical(attr(parents[2L, ][[select_id]][[1L]], "s_bit"))]
-            interactions1 = sample_interactions_random(selected_features1)
-            interactions2 = sample_interactions_random(selected_features2)
-            eqcs1 = get_eqcs(interactions1)
-            eqcs2 = get_eqcs(interactions2)
-            I1 = list(I = get_matrix(eqcs1), classes = map(eqcs1, function(x) match(x, selected_features1)))
-            I2 = list(I = get_matrix(eqcs2), classes = map(eqcs2, function(x) match(x, selected_features2)))
-            m1 = sample_m(I1)
-            m2 = sample_m(I2)
+          iaml1$mutate()
+          iaml2$mutate()
 
-            interaction_constraints1 = I1$classes
-            n_interactions1 = sum(I1$I)
-            n_interactions_total = nrow(I1$I) ^ 2L
-            I1 = map(interaction_constraints1, function(x) x - 1L)
-            attr(I1, "I_representation") = interactions1
-            attr(I1, "n_interactions") = n_interactions1
-            attr(I1, "n_interactions_total") = n_interactions_total
+          crossing_sections = iaml1$get_crossing_sections(iaml2)
+          tmp = iaml1$clone(deep = TRUE)
+          iaml1$crossover(iaml2, crossing_sections = crossing_sections)
+          iaml2$crossover(tmp, crossing_sections = rev(crossing_sections))
 
-            interaction_constraints2 = I2$classes
-            n_interactions2 = sum(I2$I)
-            I2 = map(interaction_constraints2, function(x) x - 1L)
-            attr(I2, "I_representation") = interactions2
-            attr(I2, "n_interactions") = n_interactions2
-            attr(I2, "n_interactions_total") = n_interactions_total
+          parents[[1L]][["iaml"]] = iaml1
+          parents[[2L]][["iaml"]] = iaml2
 
-            n_non_monotone1 = sum(m1 == 0)
-            n_non_monotone_total = length(m1)
-            attr(m1, "n_non_monotone") = n_non_monotone1
-            attr(m1, "n_non_monotone_total") = n_non_monotone_total
-
-            n_non_monotone2 = sum(m2 == 0)
-            attr(m2, "n_non_monotone") = n_non_monotone2
-            attr(m2, "n_non_monotone_total") = n_non_monotone_total
-
-            parents[1L, ][[interaction_id]] = list(I1)
-            parents[2L, ][[interaction_id]] = list(I2)
-
-            parents[1L, ][[monotone_id]] = list(m2)
-            parents[2L, ][[monotone_id]] = list(m2)
-          }
-          # FIXME: I, m
-
-          parents
+          as.data.table(transpose_list(parents))
         })
         stopifnot(nrow(children) == lambda)
         children[, generation := gen]
@@ -214,9 +151,29 @@ TunerIAMLEA = R6Class("TunerIAMLEA",
         for (i in seq_len(nrow(children))) {
           inst$eval_batch(children[i, ])
         }
+
+        # NSGA-II stuff
+        # could do this only based on gen and gen - 1L
         ys = t(t(inst$archive$data[, inst$archive$cols_y, with = FALSE]) * mult_max_to_min(inst$objective$codomain))
-        nadir = apply(ys, MARGIN = 2L, FUN = function(x) max(x) + 1)
-        alive_ids = nds_selection(t(ys), n_select = mu, ref_point = nadir, minimize = TRUE)
+        rankings = emoa::nds_rank(t(ys))  # non-dominated fronts
+        cds = map_dtr(unique(rankings), function(ranking) {  # crowding distances
+          ids = which(rankings == ranking)
+          data.table(id = ids, cd = emoa::crowding_distance(t(ys[ids, ])))
+        })
+        setorderv(cds, "id")
+        alive_ids = integer(mu)
+        current_front = 0L
+        while(sum(alive_ids == 0L) != 0L) {
+          current_front = current_front + 1L
+          candidate_ids = which(rankings == current_front)
+          to_insert = sum(alive_ids == 0L)
+          if (length(candidate_ids) <= to_insert) {
+            alive_ids[alive_ids == 0][seq_along(candidate_ids)] = candidate_ids
+          } else {
+            alive_ids[alive_ids == 0] = candidate_ids[order(cds[candidate_ids, ]$cd)][seq_len(to_insert)]
+          }
+        }
+        stopifnot(length(unique(alive_ids)) == length(alive_ids))
         inst$archive$data[, status := "dead"]
         inst$archive$data[alive_ids, status := "alive"]
       }
@@ -227,6 +184,7 @@ TunerIAMLEA = R6Class("TunerIAMLEA",
 )
 
 mutate = function(value, param, sdx) {
+  # FIXME: log scale
   # FIXME: p, sigma HPs of Tuner; p could be individual for each HP
   p = 0.2
   sigma = 1
@@ -245,44 +203,4 @@ mutate = function(value, param, sdx) {
   }
   value
 }
-
-mutate_s = function(value, features) {
-  # FIXME: p HP of Tuner
-  p = 0.2
-  value = value[[1L]]
-  s_bit = attr(value, "s_bit")
-  to_mutate = runif(length(s_bit), min = 0, max = 1) <= p
-  s_bit[to_mutate] = sample(c(0L, 1L), size = sum(to_mutate), prob = c(0.5, 0.5), replace = TRUE)
-  selected_features = features[as.logical(s_bit)]
-  s = selector_name(selected_features)
-  attr(s, "s_bit") = s_bit
-  attr(s, "n_selected") = sum(s_bit)
-  attr(s, "n_selected_total") = attr(value, "n_selected_total")
-  list(s)
-}
-
-crossover_s = function(value1, value2, features) {
-  # FIXME: p HP of Tuner
-  p = 0.2
-  value1 = value1[[1L]]
-  value2 = value2[[1L]]
-  s_bit1 = attr(value1, "s_bit")
-  s_bit2 = attr(value2, "s_bit")
-  to_crossover = runif(length(s_bit1), min = 0, max = 1) <= p
-  tmp = s_bit1
-  s_bit1[to_crossover] = s_bit2[to_crossover]
-  s_bit2[to_crossover] = tmp[to_crossover]
-  selected_features1 = features[as.logical(s_bit1)]
-  selected_features2 = features[as.logical(s_bit2)]
-  s1 = selector_name(selected_features1)
-  s2 = selector_name(selected_features2)
-  attr(s1, "s_bit") = s_bit1
-  attr(s1, "n_selected") = sum(s_bit1)
-  attr(s1, "n_selected_total") = attr(value1, "n_selected_total")
-  attr(s2, "s_bit") = s_bit2
-  attr(s2, "n_selected") = sum(s_bit2)
-  attr(s2, "n_selected_total") = attr(value1, "n_selected_total")
-  list(s1, s2)
-}
-
 

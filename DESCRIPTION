@@ -15,6 +15,7 @@ Imports:
   bbotk,
   checkmate (>= 2.0.0),
   data.table,
+  emoa (>= 0.5-0.1),
   iml,
   lgr,
   mlr3 (>= 0.13.0),
@@ -22,7 +23,8 @@ Imports:
   mlr3pipelines,
   mlr3misc (>= 0.7.0),
   paradox (>= 0.8.0),
-  R6
+  R6,
+  relations (>= 0.6-12)
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.1.2
