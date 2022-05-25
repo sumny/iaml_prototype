@@ -8,7 +8,7 @@ IAMLPoint = R6Class("IAMLPoint",
       self$feature_names = feature_names
 
       # randomly sample n_selected and then the selected features
-      n_selected = max(1, min(round(runif(1) * n_features), n_features))
+      n_selected = sample(seq_len(n_features), size = 1L)
       selected_features = sample(feature_names, size = n_selected, replace = FALSE)
 
       # randomly sample eqcs (w.r.t interaction relation)
@@ -112,39 +112,50 @@ IAMLPoint = R6Class("IAMLPoint",
       # shuffle membership
       # mutate group membership
 
-      p = 0.1
-      groups = self$groups
-      group_lookup = data.table(groups = groups$eqcs, reordered = seq_along(groups$eqcs))
-      change_belonging = runif(length(groups$features)) < p
-      if (sum(change_belonging) > 0) {
-        new_group_id = max(groups$eqcs) + 1L
-        group_lookup = rbind(group_lookup, data.table(groups = new_group_id, reordered = new_group_id))
-        monotone_eqcs = rbind(self$monotone_eqcs, data.table(eqcs = new_group_id, monotonicity = 0L))
-        new_belonging = sample(c(groups$eqcs, new_group_id), size = sum(change_belonging), replace = TRUE)
-        belonging = groups$belonging
-        belonging[change_belonging] = new_belonging
+      old_groups = self$groups
+      old_monotone_eqcs = self$monotone_eqcs
 
-        # some older groups may now be unselected
-        group_lookup = group_lookup[groups %in% unique(c(1L, belonging)), ]  # it may happend that "1_1" is empty
-        group_lookup[, reordered := seq_len(.N)]
+      tryCatch(
+      {
+        groups = self$groups
+        group_lookup = data.table(groups = groups$eqcs, reordered = seq_along(groups$eqcs))
+        p = 0.1
+        change_belonging = runif(length(groups$features)) < p
+        if (sum(change_belonging) > 0) {
+          new_group_id = max(groups$eqcs) + 1L
+          group_lookup = rbind(group_lookup, data.table(groups = new_group_id, reordered = new_group_id))
+          monotone_eqcs = rbind(self$monotone_eqcs, data.table(eqcs = new_group_id, monotonicity = 0L))
+          new_belonging = sample(c(groups$eqcs, new_group_id), size = sum(change_belonging), replace = TRUE)
+          belonging = groups$belonging
+          belonging[change_belonging] = new_belonging
 
-        belonging = group_lookup$reordered[match(belonging, group_lookup$groups)]
-        eqcs = unique(belonging)
-        self$groups = list(features = groups$features, eqcs = unique(c(1L, sort(eqcs))), belonging = belonging)
+          # some older groups may now be unselected
+          group_lookup = group_lookup[groups %in% unique(c(1L, belonging)), ]  # it may happend that "1_1" is empty
+          group_lookup[, reordered := seq_len(.N)]
 
-        # update group attributes (monotonicity)
-        orig_eqcs = group_lookup$groups[match(eqcs, group_lookup$reordered)]
-        monotone_eqcs = monotone_eqcs[match(unique(c(1L, orig_eqcs)), monotone_eqcs$eqcs), ]  # it may happend that "1_1" is empty
-        monotone_eqcs[, eqcs := group_lookup$reordered[match(monotone_eqcs$eqcs, group_lookup$groups)]]
-        setorderv(monotone_eqcs, "eqcs")
-        self$monotone_eqcs = monotone_eqcs
-      }
-      change_monotonicity = runif(nrow(self$monotone_eqcs) -1L) < p
-      if (sum(change_monotonicity) > 0) {
-        new_monotonicity = sample(c(-1L, 0L, 1L), size = sum(change_monotonicity), replace = TRUE)
-        # + 1 because first row is always NA
-        self$monotone_eqcs = self$monotone_eqcs[which(change_monotonicity) + 1L, monotonicity := new_monotonicity]
-      }
+          belonging = group_lookup$reordered[match(belonging, group_lookup$groups)]
+          eqcs = unique(belonging)
+          self$groups = list(features = groups$features, eqcs = unique(c(1L, sort(eqcs))), belonging = belonging)
+
+          # update group attributes (monotonicity)
+          orig_eqcs = group_lookup$groups[match(eqcs, group_lookup$reordered)]
+          monotone_eqcs = monotone_eqcs[match(unique(c(1L, orig_eqcs)), monotone_eqcs$eqcs), ]  # it may happend that "1_1" is empty
+          monotone_eqcs[, eqcs := group_lookup$reordered[match(monotone_eqcs$eqcs, group_lookup$groups)]]
+          setorderv(monotone_eqcs, "eqcs")
+          self$monotone_eqcs = monotone_eqcs
+        }
+        change_monotonicity = runif(nrow(self$monotone_eqcs) -1L) < p
+        if (sum(change_monotonicity) > 0) {
+          new_monotonicity = sample(c(-1L, 0L, 1L), size = sum(change_monotonicity), replace = TRUE)
+          # + 1 because first row is always NA
+          self$monotone_eqcs = self$monotone_eqcs[which(change_monotonicity) + 1L, monotonicity := new_monotonicity]
+        }
+      }, error = function(error_condition) {
+        warning(error_condition$message)
+        warning("Resetting due to error in mutation.")
+        self$groups = old_groups
+        self$monotone_eqcs = old_monotone_eqcs
+      })
     },
 
     crossover = function(parent2, crossing_sections) {
@@ -152,65 +163,76 @@ IAMLPoint = R6Class("IAMLPoint",
       # parent1 is self$groups
       # parent2 is $groups of another IAMLPoint
       # GGA, groups are {not_selected, eqc1, ..., eqcl} not_selected must be the first
-      parent1_monotone_eqcs = copy(self$monotone_eqcs)
-      parent1_monotone_eqcs[, eqcs := paste0("1_", eqcs)]
-      parent2_monotone_eqcs = copy(parent2$monotone_eqcs)
-      parent2_monotone_eqcs[, eqcs := paste0("2_", eqcs)]
+      old_groups = self$groups
+      old_monotone_eqcs = self$monotone_eqcs
 
-      parent1 = copy(self$groups)
-      parent1$eqcs = paste0("1_", parent1$eqcs)
-      parent1$belonging = paste0("1_", parent1$belonging)
-      parent2 = copy(parent2$groups)
-      parent2$eqcs = paste0("2_", parent2$eqcs)
-      parent2$belonging = paste0("2_", parent2$belonging)
+      tryCatch(
+      {
+        parent1_monotone_eqcs = copy(self$monotone_eqcs)
+        parent1_monotone_eqcs[, eqcs := paste0("1_", eqcs)]
+        parent2_monotone_eqcs = copy(parent2$monotone_eqcs)
+        parent2_monotone_eqcs[, eqcs := paste0("2_", eqcs)]
 
-      stopifnot(parent1$features == parent2$features)
+        parent1 = copy(self$groups)
+        parent1$eqcs = paste0("1_", parent1$eqcs)
+        parent1$belonging = paste0("1_", parent1$belonging)
+        parent2 = copy(parent2$groups)
+        parent2$eqcs = paste0("2_", parent2$eqcs)
+        parent2$belonging = paste0("2_", parent2$belonging)
 
-      crossing_section1 = crossing_sections[[1L]]
-      crossing_section2 = crossing_sections[[2L]]
-      if (length(parent1$eqcs) == 1L) {
-        left_section = 1
-        right_section = 1
-      } else {
-        left_section = parent1$eqcs[1:crossing_section1[1L]]  # AB
-        right_section = parent1$eqcs[(crossing_section1[1L] + 1):length(parent1$eqcs)]  # DE
-      }
+        stopifnot(parent1$features == parent2$features)
 
-      groups_to_be_injected = parent2$eqcs[crossing_section2[1L]:crossing_section2[2L]]  # bcd
-      features_in_injected_groups = which(parent2$belonging %in% groups_to_be_injected)  # which features are contained in the to be injected groups of parent2
-      if ("2_1" %in% groups_to_be_injected) {
-        # if the unselected group should be injected we add it to the unselected group of the parent instead of
-        # inserting it as a new group
-        groups_to_be_injected[groups_to_be_injected == "2_1"] = "1_1"
-      }
+        crossing_section1 = crossing_sections[[1L]]
+        crossing_section2 = crossing_sections[[2L]]
+        if (length(parent1$eqcs) == 1L) {
+          left_section = 1
+          right_section = 1
+        } else {
+          left_section = parent1$eqcs[1:crossing_section1[1L]]  # AB
+          right_section = parent1$eqcs[(crossing_section1[1L] + 1):length(parent1$eqcs)]  # DE
+        }
 
-      # new groups would look like this
-      groups = c(left_section, groups_to_be_injected, right_section)  # AB | bcd | DE
-      groups = unique(groups)  # due to "2_1" %in% groups_to_be_injected handling above
-      group_lookup = data.table(groups = groups, reordered = seq_along(groups))
+        groups_to_be_injected = parent2$eqcs[crossing_section2[1L]:crossing_section2[2L]]  # bcd
+        features_in_injected_groups = which(parent2$belonging %in% groups_to_be_injected)  # which features are contained in the to be injected groups of parent2
+        if ("2_1" %in% groups_to_be_injected) {
+          # if the unselected group should be injected we add it to the unselected group of the parent instead of
+          # inserting it as a new group
+          groups_to_be_injected[groups_to_be_injected == "2_1"] = "1_1"
+        }
 
-      # belonging of features now has changed after insertion of groups
-      belonging = parent1$belonging
-      for (group in groups_to_be_injected) {
-        belonging[parent2$belonging == group] = group
-      }
+        # new groups would look like this
+        groups = c(left_section, groups_to_be_injected, right_section)  # AB | bcd | DE
+        groups = unique(groups)  # due to "2_1" %in% groups_to_be_injected handling above
+        group_lookup = data.table(groups = groups, reordered = seq_along(groups))
 
-      # some older groups may now be unselected
-      group_lookup = group_lookup[groups %in% unique(c("1_1", belonging)), ]  # it may happend that "1_1" is empty
-      group_lookup[, reordered := seq_len(.N)]
-      stopifnot("1_1" %in% group_lookup$groups && group_lookup[groups == "1_1", ][["reordered"]] == 1)
+        # belonging of features now has changed after insertion of groups
+        belonging = parent1$belonging
+        for (group in groups_to_be_injected) {
+          belonging[parent2$belonging == group] = group
+        }
 
-      belonging = group_lookup$reordered[match(belonging, group_lookup$groups)]
-      eqcs = unique(belonging)
-      self$groups = list(features = parent1$features, eqcs = unique(c(1L, sort(eqcs))), belonging = belonging)
+        # some older groups may now be unselected
+        group_lookup = group_lookup[groups %in% unique(c("1_1", belonging)), ]  # it may happend that "1_1" is empty
+        group_lookup[, reordered := seq_len(.N)]
+        stopifnot("1_1" %in% group_lookup$groups && group_lookup[groups == "1_1", ][["reordered"]] == 1)
 
-      # update group attributes (monotonicity)
-      orig_eqcs = group_lookup$groups[match(eqcs, group_lookup$reordered)]
-      all_monotone_eqcs = rbind(parent1_monotone_eqcs, parent2_monotone_eqcs)
-      monotone_eqcs = all_monotone_eqcs[match(unique(c("1_1", orig_eqcs)), all_monotone_eqcs$eqcs), ]  # it may happend that "1_1" is empty
-      monotone_eqcs[, eqcs := group_lookup$reordered[match(monotone_eqcs$eqcs, group_lookup$groups)]]
-      setorderv(monotone_eqcs, "eqcs")
-      self$monotone_eqcs = monotone_eqcs
+        belonging = group_lookup$reordered[match(belonging, group_lookup$groups)]
+        eqcs = unique(belonging)
+        self$groups = list(features = parent1$features, eqcs = unique(c(1L, sort(eqcs))), belonging = belonging)
+
+        # update group attributes (monotonicity)
+        orig_eqcs = group_lookup$groups[match(eqcs, group_lookup$reordered)]
+        all_monotone_eqcs = rbind(parent1_monotone_eqcs, parent2_monotone_eqcs)
+        monotone_eqcs = all_monotone_eqcs[match(unique(c("1_1", orig_eqcs)), all_monotone_eqcs$eqcs), ]  # it may happend that "1_1" is empty
+        monotone_eqcs[, eqcs := group_lookup$reordered[match(monotone_eqcs$eqcs, group_lookup$groups)]]
+        setorderv(monotone_eqcs, "eqcs")
+        self$monotone_eqcs = monotone_eqcs
+      }, error = function(error_condition) {
+        warning(error_condition$message)
+        warning("Resetting due to error in crossover.")
+        self$groups = old_groups
+        self$monotone_eqcs = old_monotone_eqcs
+      })
     },
 
     # function to get crossing sections for grouped GA crossover below

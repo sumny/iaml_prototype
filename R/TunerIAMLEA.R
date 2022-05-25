@@ -100,7 +100,7 @@ TunerIAMLEA = R6Class("TunerIAMLEA",
         nadir = apply(ys, MARGIN = 2L, FUN = function(x) max(x) + 1)
         alive_ids = which(inst$archive$data$status == "alive")
 
-        children = {
+        children = map_dtr(seq_len(ceiling(mu / 2)), function(i) {
           parent_id1 = binary_tournament(ys, alive_ids, nadir)
           parent_id2 = binary_tournament(ys, alive_ids, nadir)
           parents = transpose_list(copy(inst$archive$data[c(parent_id1, parent_id2), c("iaml", inst$archive$cols_x), with = FALSE]))
@@ -138,8 +138,9 @@ TunerIAMLEA = R6Class("TunerIAMLEA",
           parents[[2L]][["iaml"]] = iaml2
 
           as.data.table(transpose_list(parents))
-        }
+        })
         children[, generation := gen]
+        children = children[seq_len(mu), ]  # restrict to mu children
         
         # see FIXME: above
         for (i in seq_len(nrow(children))) {
@@ -201,6 +202,6 @@ mutate = function(value, param, sdx) {
 binary_tournament = function(ys, alive_ids, nadir) {
   ids = sample(alive_ids, size = 2L, replace = FALSE)
   ys_ids = ys[ids, ]
-  ids[nds_selection(t(ys[ids, ]), n_select = 1L, ref_point = nadir, minimize = TRUE)]
+  ids[emoa::nds_cd_selection(t(ys_ids), n = 1L)]
 }
 
