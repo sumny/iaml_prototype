@@ -1,12 +1,11 @@
 # ideen:
 # eqcs Gruppen der groesse absteigend nach sortieren so werden beim crossover dann eher gleich grosse gruppen eingecrosst
 # shuffle groups
-IAMLPoint = R6Class("IAMLPoint",
+IAMLPointNEW = R6Class("IAMLPoint",
   public = list(
-    initialize = function(task, warmstart = FALSE, n_selected = NULL, scores = NULL, interaction_detector = NULL) {
+    initialize = function(task, n_selected = NULL, scores = NULL, interaction_detector = NULL) {
       # checks and feature names
       assert_task(task, feature_types = c("integer", "numeric"))
-      assert_flag(warmstart)
       assert_int(n_selected, lower = 1L, upper = nrow(task$feature_types), null.ok = TRUE)
       assert_data_table(scores, null.ok = TRUE)
       assert_r6(interaction_detector, classes = "InteractionDetector", null.ok = TRUE)
@@ -14,51 +13,28 @@ IAMLPoint = R6Class("IAMLPoint",
       n_features = length(feature_names)
       self$feature_names = feature_names
 
-      if (warmstart) {
-        # sample selected features based on scores
-        selected_features = sort(sample(scores$feature, size = n_selected, replace = FALSE, prob = scores$score))
+      # sample selected features based on scores
+      selected_features = sort(sample(scores$feature, size = n_selected, replace = FALSE, prob = scores$score))
 
-        # eqcs
-        if (n_selected == 1L) {
-          eqcs = list(features = selected_features, eqcs = 1L, belonging = 1L)
-        } else {
-          k = sample(seq_len((n_selected * (n_selected - 1L)) / 2L), size = 1L)
-          belonging = interaction_detector$get_eqcs_from_top_k(k = k, features = selected_features)
-          belonging = match(belonging, sort(unique(belonging)))  # make eqcs start at 1
-
-          eqcs = unique(belonging)
-          eqcs = list(features = selected_features, eqcs = sort(eqcs), belonging = belonging)
-        }
-
-        # create group structure (including the first group being unselected)
-        self$groups = self$get_full_group_structure(eqcs, unselected_features = setdiff(feature_names, selected_features))
-
-        # FIXME:
-        # randomly sample monotonicity constraints of partitions
-        monotone_eqcs = c(NA_integer_, sample(c(-1L, 0L, 1L), size = length(self$groups$eqcs) - 1L, replace = TRUE))  # first one is the not selected group
-        self$monotone_eqcs = data.table(eqcs = self$groups$eqcs, monotonicity = monotone_eqcs)
-        #self$monotone_eqcs[-1L, monotonicity := 0L]  # FIXME:
-
+      # eqcs
+      if (n_selected == 1L) {
+        eqcs = list(features = selected_features, eqcs = 1L, belonging = 1L)
       } else {
-        # randomly sample n_selected and then the selected features
-        n_selected = sample(seq_len(n_features), size = 1L)
-        selected_features = sort(sample(feature_names, size = n_selected, replace = FALSE))
-
-        # randomly sample eqcs (w.r.t interaction relation)
-        n_eqcs = sample(seq_len(n_selected), size = 1L)
-        belonging = sample(seq_len(n_eqcs), size = n_selected, replace = TRUE)  # eqcs indexed by feature
+        k = sample(seq_len((n_selected * (n_selected - 1L)) / 2L), size = 1L)
+        belonging = interaction_detector$get_eqcs_from_top_k(k = k, features = selected_features)
         belonging = match(belonging, sort(unique(belonging)))  # make eqcs start at 1
+
         eqcs = unique(belonging)
         eqcs = list(features = selected_features, eqcs = sort(eqcs), belonging = belonging)
-
-        # create group structure (including the first group being unselected)
-        self$groups = self$get_full_group_structure(eqcs, unselected_features = setdiff(feature_names, selected_features))
-
-        # randomly sample monotonicity constraints of partitions
-        monotone_eqcs = c(NA_integer_, sample(c(-1L, 0L, 1L), size = length(self$groups$eqcs) - 1L, replace = TRUE))  # first one is the not selected group
-        self$monotone_eqcs = data.table(eqcs = self$groups$eqcs, monotonicity = monotone_eqcs)
-        #self$monotone_eqcs[-1L, monotonicity := 0L]  # FIXME:
       }
+
+      # create group structure (including the first group being unselected)
+      self$groups = self$get_full_group_structure(eqcs, unselected_features = setdiff(feature_names, selected_features))
+
+      # FIXME:
+      # randomly sample monotonicity constraints of partitions
+      monotone_eqcs = c(NA_integer_, sample(c(0L, 1L), size = length(self$groups$eqcs) - 1L, replace = TRUE))  # first one is the not selected group
+      self$monotone_eqcs = data.table(eqcs = self$groups$eqcs, monotonicity = monotone_eqcs)
     },
 
     feature_names = NULL,
@@ -180,7 +156,7 @@ IAMLPoint = R6Class("IAMLPoint",
         }
         change_monotonicity = runif(nrow(self$monotone_eqcs) -1L) < p
         if (sum(change_monotonicity) > 0) {
-          new_monotonicity = sample(c(-1L, 0L, 1L), size = sum(change_monotonicity), replace = TRUE)
+          new_monotonicity = sample(c(0L, 1L), size = sum(change_monotonicity), replace = TRUE)
           # + 1 because first row is always NA
           self$monotone_eqcs = self$monotone_eqcs[which(change_monotonicity) + 1L, monotonicity := new_monotonicity]
         }
@@ -190,7 +166,6 @@ IAMLPoint = R6Class("IAMLPoint",
         self$groups = old_groups
         self$monotone_eqcs = old_monotone_eqcs
       })
-      #self$monotone_eqcs[-1L, monotonicity := 0L]  # FIXME:
     },
 
     crossover = function(parent2, crossing_sections) {
@@ -268,7 +243,6 @@ IAMLPoint = R6Class("IAMLPoint",
         self$groups = old_groups
         self$monotone_eqcs = old_monotone_eqcs
       })
-      #self$monotone_eqcs[-1L, monotonicity := 0L]  # FIXME:
     },
 
     # function to get crossing sections for grouped GA crossover below
@@ -328,7 +302,7 @@ IAMLPoint = R6Class("IAMLPoint",
         assert_true(rhs[1L, ][["eqcs"]] == 1L && is.na(rhs[1L, ][["monotonicity"]]))
         assert_integer(rhs[["eqcs"]], lower = 1L, upper = length(self$feature_names) + 1L, any.missing = FALSE, min.len = 2L, unique = TRUE)
         assert_true(all(rhs[["eqcs"]] == seq_len(nrow(rhs))))
-        assert_integer(rhs[["monotonicity"]], lower = -1L, upper = 1L)
+        assert_integer(rhs[["monotonicity"]], lower = 0L, upper = 1L)
         private$.monotone_eqcs = rhs
       } else {
         private$.monotone_eqcs

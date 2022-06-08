@@ -67,39 +67,22 @@ TunerIAML = R6Class("TunerIAML",
       param_space$trafo = inst$search_space$trafo
       param_space$deps = inst$search_space$deps
 
-      sampler = SamplerUnif$new(param_space)
-
       task = inst$objective$task
-      features = task$feature_names
-      n_features = length(task$feature_names)
 
       repeat {  # iterate until we have an exception from eval_batch
-        design = sampler$sample(batch_size)
-
-        sIm = map_dtr(seq_len(batch_size), function(i) {
-          n_selected = sample(seq_len(n_features), size = 1L)
-          selected_features = sample(features, size = n_selected, replace = FALSE)
-          interactions = sample_interactions_random(selected_features)
-          eqcs = get_eqcs(interactions)
-          s = selector_name(selected_features)
-          attr(s, "n_selected") = n_selected
-          attr(s, "n_selected_total") = n_features
-          I = list(I = get_matrix(eqcs), classes = map(eqcs, function(x) match(x, selected_features)))
-          m = sample_m(I)
-          interaction_constraints = I$classes
-          n_interactions = sum(I$I)
-          n_interactions_total = nrow(I$I) ^ 2L
-          I = map(interaction_constraints, function(x) x - 1L)
-          attr(I, "n_interactions") = n_interactions
-          attr(I, "n_interactions_total") = n_interactions_total
-          n_non_monotone = sum(m == 0)
-          n_non_monotone_total = length(m)
-          attr(m, "n_non_monotone") = n_non_monotone
-          attr(m, "n_non_monotone_total") = n_non_monotone_total
-          data.table(s = list(s), I = list(I), m = list(m))
+        population = generate_design_random(param_space, n = batch_size)$data  # param_space
+        sIm = map_dtr(seq_len(batch_size), function(i) {  # sIm space
+          iaml = IAMLPoint$new(task)
+          data.table(iaml = list(iaml),
+                     s = list(iaml$create_selector()),
+                     I = list(iaml$create_interaction_constraints()),
+                     m = list(iaml$create_monotonicity_constraints()))
         })
-        colnames(sIm) = c(select_id, interaction_id, monotone_id)
-        inst$eval_batch(cbind(design$data, sIm))
+        colnames(sIm) = c("iaml", select_id, interaction_id, monotone_id)
+
+        population = cbind(population, sIm)
+
+        inst$eval_batch(population)
       }
 
       inst

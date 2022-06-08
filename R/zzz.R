@@ -9,7 +9,11 @@
 #' @import mlr3learners
 #' @import mlr3pipelines
 #' @import mlr3tuning
-#@importFrom stats setNames runif dnorm pnorm
+#' @import relations
+#' @import scam
+#' @import mlr3filters
+#' @import iml
+#' @importFrom stats setNames runif dnorm pnorm rnorm
 
 .onLoad = function(libname, pkgname) { # nolint
   # nocov start
@@ -19,6 +23,8 @@
   x = utils::getFromNamespace("mlr_tuners", ns = "mlr3tuning")
   x$add("iaml", TunerIAML)
   x$add("iaml_ea", TunerIAMLEA)
+  x$add("iaml_ea_new", TunerIAMLEANEW)
+
 
   # add iaml to measures dictionary
   x = utils::getFromNamespace("mlr_measures", ns = "mlr3")

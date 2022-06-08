@@ -30,7 +30,7 @@
 #' @family Tuner
 #'
 #' @export
-TunerIAMLEA = R6Class("TunerIAMLEA",
+TunerIAMLEANEW = R6Class("TunerIAMLEANEW",
   inherit = mlr3tuning::Tuner,
   public = list(
 
@@ -41,8 +41,7 @@ TunerIAMLEA = R6Class("TunerIAMLEA",
         select_id = p_uty(tags = "required"),
         interaction_id = p_uty(tags = "required"),
         monotone_id = p_uty(tags = "required"),
-        mu = p_int(default = 100L, tags = "required"),
-        warmstart = p_lgl(default = FALSE, tags = "required")
+        mu = p_int(default = 100L, tags = "required")
       )
       param_set$values = list(select_id = "select.selector", interaction_id = "classif.xgboost.interaction_constraints", monotone_id = "classif.xgboost.monotone_constraints")
       super$initialize(
@@ -60,7 +59,6 @@ TunerIAMLEA = R6Class("TunerIAMLEA",
     .optimize = function(inst) {
       # parent selection: bbotk::nds_selection
       mu = self$param_set$values$mu
-      warmstart = self$param_set$values$warmstart
       select_id = self$param_set$values$select_id
       interaction_id = self$param_set$values$interaction_id
       monotone_id = self$param_set$values$monotone_id
@@ -76,36 +74,28 @@ TunerIAMLEA = R6Class("TunerIAMLEA",
       # initial population
       # FIXME: initialize sIm separately from param_space
       # FIXME: always add the unconstrained
-      if (warmstart) {
-        population = generate_design_random(param_space, n = mu)$data  # param_space
+      population = generate_design_random(param_space, n = mu)$data  # param_space
 
-        n_selected = pmax(1L, pmin(rgeom(mu, prob = 0.2), nrow(task$feature_types)))
-        filter = FilterInformationGain$new()
-        scores = as.data.table(filter$calculate(task))
-        scores[, score := score / sum(score)]
-        interaction_detector = InteractionDetector$new(task)
-        interaction_detector$compute_best_rss()
+      n_selected = pmax(1L, pmin(rgeom(mu, prob = 0.2), nrow(task$feature_types)))
+      filter = FilterInformationGain$new()
+      scores = as.data.table(filter$calculate(task))
+      scores[, score := score / sum(score)]
+      interaction_detector = InteractionDetector$new(task)
+      interaction_detector$compute_best_rss()
+      monotonicity_detector = MonotonicityDetector$new(task)
+      monotonicity_detector$compute_aics()
+      # FIXME: below
+      switch_sign_affected = monotonicity_detector$aic_table[aic_decreasing > aic_increasing][["feature_name"]]
+      inst$objective$learner$param_set$values$colapply.affect_columns = selector_name(switch_sign_affected)
 
-        sIm = map_dtr(seq_len(mu), function(i) {  # sIm space
-          iaml = IAMLPoint$new(task, warmstart = TRUE, n_selected = n_selected[i], scores = scores, interaction_detector = interaction_detector)
-          data.table(iaml = list(iaml),
-                     s = list(iaml$create_selector()),
-                     I = list(iaml$create_interaction_constraints()),
-                     m = list(iaml$create_monotonicity_constraints()))
-        })
-        colnames(sIm) = c("iaml", select_id, interaction_id, monotone_id)
-      } else {
-        population = generate_design_random(param_space, n = mu)$data  # param_space
-
-        sIm = map_dtr(seq_len(mu), function(i) {  # sIm space
-          iaml = IAMLPoint$new(task)
-          data.table(iaml = list(iaml),
-                     s = list(iaml$create_selector()),
-                     I = list(iaml$create_interaction_constraints()),
-                     m = list(iaml$create_monotonicity_constraints()))
-        })
-        colnames(sIm) = c("iaml", select_id, interaction_id, monotone_id)
-      }
+      sIm = map_dtr(seq_len(mu), function(i) {  # sIm space
+        iaml = IAMLPointNEW$new(task, n_selected = n_selected[i], scores = scores, interaction_detector = interaction_detector)
+        data.table(iaml = list(iaml),
+                   s = list(iaml$create_selector()),
+                   I = list(iaml$create_interaction_constraints()),
+                   m = list(iaml$create_monotonicity_constraints()))
+      })
+      colnames(sIm) = c("iaml", select_id, interaction_id, monotone_id)
 
       population = cbind(population, sIm)
       gen = 0

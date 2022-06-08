@@ -2,7 +2,6 @@
 
 # we assume integer or numeric features due to later using xgboost
 # logicals must be converted to integers
-# we also assume that we only have features_pos or features_neg present in the task
 InteractionDetector = R6Class("InteractionDetector",
   public = list(
     initialize = function(task, grid_size = 10L) {
@@ -53,22 +52,25 @@ InteractionDetector = R6Class("InteractionDetector",
       self$rss = rss
     },
 
-    get_topq_eqcs = function(q = 0.01) {
-      assert_number(q, lower = 0, upper = 1)
-      top_rss = sort(self$rss[upper.tri(self$rss)])[seq_len(ceiling(q * (self$n_features * (self$n_features - 1L) / 2)))]
-      top_interactions = unlist(map(top_rss, function(x) asplit(which(self$rss == x, arr.ind = TRUE), 1)), recursive = FALSE)
-      relation_matrix = matrix(0, nrow = self$n_features, ncol = self$n_features)
-      colnames(relation_matrix) = rownames(relation_matrix) = seq_len(self$n_features)
+    get_eqcs_from_top_k = function(k = 1L, features = NULL) {
+      assert_subset(features, choice = self$feature_names)
+      if (is.null(features)) features = self$feature_names
+      n_features = length(features)
+      assert_int(k, lower = 1L, upper = (n_features * (n_features - 1L)) / 2L)
+      rss = self$rss[match(features, self$feature_names), match(features, self$feature_names)]
+      top_rss = sort(rss[upper.tri(rss)])[seq_len(k)]
+      top_interactions = unlist(map(top_rss, function(x) asplit(which(rss == x, arr.ind = TRUE), MARGIN = 1L)), recursive = FALSE)
+      relation_matrix = matrix(0, nrow = n_features, ncol = n_features)
+      colnames(relation_matrix) = rownames(relation_matrix) = seq_len(n_features)
       for (interaction in top_interactions) {
         relation_matrix[interaction[1L], interaction[2L]] = 1
         relation_matrix[interaction[2L], interaction[1L]] = 1  # make symmetric
       }
       diag(relation_matrix) = 1  # make reflexive
-      relation = relation(list(seq_len(self$n_features), seq_len(self$n_features)), incidence = relation_matrix)
+      relation = relation(list(seq_len(n_features), seq_len(n_features)), incidence = relation_matrix)
       relation = transitive_closure(relation)  # make transitive
       belonging = relation_class_ids(relation)
-      eqcs = map(unique(belonging), function(class) unname(which(belonging == class)))  # equivalence classes
-      eqcs
+      belonging
     }
   ),
 
@@ -204,5 +206,5 @@ if (FALSE) {
   task = tsk("wine")
   detector = InteractionDetector$new(task)
   detector$compute_best_rss()
-  detector$get_topq_eqcs(0.01)
+  detector$get_eqcs_from_top_k(1)
 }
