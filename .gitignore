@@ -1,1 +1,7 @@
 *.png
+.Rprofile
+batchtools.conf.R
+renv.lock
+renv/
+slurm_wyoming.tmpl
+
