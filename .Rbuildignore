@@ -2,3 +2,4 @@
 README.*
 README_files
 ^man-roxygen$
+^attic$
