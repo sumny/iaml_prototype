@@ -49,6 +49,10 @@ All \link{Tuner}s use a logger (as implemented in \CRANpkg{lgr}) from package
 Use \code{lgr::get_logger("bbotk")} to access and control the logger.
 }
 
+\seealso{
+Other Tuner: 
+\code{\link{mlr_tuner_iaml_ea}}
+}
 \concept{Tuner}
 \section{Super class}{
 \code{\link[mlr3tuning:Tuner]{mlr3tuning::Tuner}} -> \code{TunerIAML}
