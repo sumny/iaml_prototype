@@ -86,7 +86,7 @@ TunerIAMLEANEW = R6Class("TunerIAMLEANEW",
       monotonicity_detector = MonotonicityDetector$new(task)
       monotonicity_detector$compute_aics()
       # FIXME: below
-      switch_sign_affected = monotonicity_detector$aic_table[aic_decreasing > aic_increasing][["feature_name"]]
+      switch_sign_affected = monotonicity_detector$aic_table[aic_decreasing < aic_increasing][["feature_name"]]
       inst$objective$learner$param_set$values$colapply.affect_columns = selector_name(switch_sign_affected)
 
       sIm = map_dtr(seq_len(mu), function(i) {  # sIm space

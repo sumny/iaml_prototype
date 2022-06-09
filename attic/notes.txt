@@ -1,0 +1,3 @@
+# Fix InteractionDetector
+# Fix MonotonicityDetector (do we need it to be so complex)
+use impact instead of one hot encoding
