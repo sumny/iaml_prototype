@@ -80,6 +80,7 @@ TunerIAMLEANEW = R6Class("TunerIAMLEANEW",
       filter = FilterInformationGain$new()
       scores = as.data.table(filter$calculate(task))
       scores[, score := score / sum(score)]
+      scores[score < .Machine$double.eps, score := .Machine$double.eps]
       interaction_detector = InteractionDetector$new(task)
       interaction_detector$compute_best_rss()
       monotonicity_detector = MonotonicityDetector$new(task)
