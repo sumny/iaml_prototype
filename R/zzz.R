@@ -13,6 +13,7 @@
 #' @import scam
 #' @import mlr3filters
 #' @import iml
+#' @import xgboost
 #' @importFrom stats setNames runif dnorm pnorm rnorm
 
 .onLoad = function(libname, pkgname) { # nolint

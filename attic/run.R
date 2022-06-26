@@ -27,19 +27,24 @@ eval_ = function(job, data, instance, ...) {
   RhpcBLASctl::blas_set_num_threads(1L)
   RhpcBLASctl::omp_set_num_threads(1L)
 
-  logger = lgr::get_logger("mlr3")
-  logger$set_threshold("warn")
-  logger = lgr::get_logger("bbotk")
-  logger$set_threshold("warn")
-  future::plan("sequential")
+  #logger = lgr::get_logger("mlr3")
+  #logger$set_threshold("warn")
+  #logger = lgr::get_logger("bbotk")
+  #logger$set_threshold("warn")
+  #future::plan("sequential")
 
   task = instance$task
   resampling = instance$resampling
   optimizer_id = job$algo.pars$optimizer
   learner = if (optimizer_id == "eawm") {
-    as_learner(po("colapply") %>>% po("select") %>>% lrn("classif.xgboost"))
+    learner = as_learner(po("colapply") %>>% po("select") %>>% lrn("classif.xgboost"))
+    learner$param_set$values$classif.xgboost.booster = "gbtree"
+    learner$param_set$values$classif.xgboost.tree_method = "exact"
+    learner$param_set$values$colapply.applicator = function(x) - x
   } else {
-    as_learner(po("select") %>>% lrn("classif.xgboost"))  # GraphLearner via mlr3pipelines
+    learner = as_learner(po("select") %>>% lrn("classif.xgboost"))  # GraphLearner via mlr3pipelines
+    learner$param_set$values$classif.xgboost.booster = "gbtree"
+    learner$param_set$values$classif.xgboost.tree_method = "exact"
   }
 
   measures = list(msr("classif.ce"),
@@ -52,7 +57,7 @@ eval_ = function(job, data, instance, ...) {
   terminator = trm("evals", n_evals = 500L)
 
   search_space = ps(
-    classif.xgboost.nrounds = p_dbl(lower = 1, upper = log(2000), tags = c("int", "log"),
+    classif.xgboost.nrounds = p_dbl(lower = 1, upper = log(1000), tags = c("int", "log"),
                                     trafo = function(x) as.integer(round(exp(x)))),
     classif.xgboost.eta = p_dbl(lower = log(1e-4), upper = 0, tags = "log",
                                 trafo = function(x) exp(x)),
@@ -116,10 +121,10 @@ saveRegistry(reg)
 ids = c(40981, 1169, 1464, 1489, 4135, 1485, 41144)
 tasks = map(ids, function(id) {
   task = tsk("oml", data_id = id)
-  pipeline_robustify(task = task, impute_missings = TRUE, factors_to_numeric = TRUE)$train(task)[[1L]]
+  po("encodeimpact")$train(list(task))[[1L]]
 })
 resamplings = map(tasks, function(task) {
- rsmp("cv", folds = 10L)$instantiate(task)
+ rsmp("cv", folds = 3L)$instantiate(task)
 })
 instances = data.table(id = ids, task = tasks, resampling = resamplings)
 instances[, id_plan := 1:.N]
@@ -147,16 +152,30 @@ for (optimizer_id in c("eawm", "eaw", "ea", "rsw", "rs")) {
 
 # standard resources used to submit jobs to cluster
 resources.serial.default = list(
-  walltime = 3600L * 24L, memory = 1024L * 8L, max.concurrent.jobs = 9999L
+  walltime = 3600L * 48L, memory = 1024L * 16L, max.concurrent.jobs = 9999L
 )
 
 jobs = findJobs()
 submitJobs(jobs, resources = resources.serial.default)
 
-
 #######################################################################################################################################################################################################
+
+tab = getJobTable()
+tab = tab[job.id %in% findDone()$job.id]
+results = reduceResultsDataTable(tab$job.id, fun = function(x, job) {
+  data = x[, c("classif.ce", "iaml_selected_features", "iaml_selected_interactions", "iaml_selected_non_monotone", "batch_nr"), with = FALSE]
+  data[, task_id := job$prob.pars$id]
+  data[, method := job$algo.pars$optimizer]
+  data[, repl := job$repl]
+  data
+})
+results = rbindlist(results$result, fill = TRUE)
+saveRDS(results, "/gscratch/lschnei8/iaml_prototype.rds")
+
 # FIXME: in analysis check which were one hot encoded and which were not
 #nadir = apply(rbind(eawm_data[, instance$archive$cols_y, with = FALSE], ea_data[, instance$archive$cols_y, with = FALSE], eaw_data[, instance$archive$cols_y, with = FALSE], rs_data[, instance$archive$cols_y, with = FALSE]), MARGIN = 2L, FUN = function(x) max(x) + 1L)
+
+
 #
 #tmp = map_dtr(1:500, function(bnr) {
 #  eawm_y = eawm_data[batch_nr <= bnr, instance$archive$cols_y, with = FALSE]

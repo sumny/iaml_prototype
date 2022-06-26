@@ -34,9 +34,11 @@ MeasureIAMLSelectedFeatures = R6Class("MeasureIAMLSelectedFeatures",
     initialize = function() {
       param_set = ps(
         normalize = p_lgl(default = FALSE, tags = "required"),
-        select_id = p_uty(tags = "required")
+        actually_used = p_lgl(default = FALSE, tags = "required"),
+        select_id = p_uty(tags = "required"),
+        learner_id = p_uty(tags = "required")
       )
-      param_set$values = list(normalize = FALSE, select_id = "select.selector")
+      param_set$values = list(normalize = FALSE, actually_used = FALSE, select_id = "select.selector", learner_id = "classif.xgboost")
 
       super$initialize(
         id = "iaml_selected_features",
@@ -57,6 +59,20 @@ MeasureIAMLSelectedFeatures = R6Class("MeasureIAMLSelectedFeatures",
       # FIXME: bug in mlr3? learner param set is not pertained correctly, therefore values are always the same, therefore fix this in Tuners for now
       n_selected = attr(learner$param_set$values[[self$param_set$values$select_id]], "n_selected")
       n_selected_total = attr(learner$param_set$values[[self$param_set$values$select_id]], "n_selected_total")
+
+      if (self$param_set$values$actually_used) {
+        # FIXME:
+        xgb_model_name = self$param_set$values$learner_id
+        features = learner$model[[xgb_model_name]]$model$feature_names
+        tmp = tryCatch(xgboost::xgb.model.dt.tree(features, learner$model[[xgb_model_name]]$model),
+          error = function(ec) data.table())
+        used = unique(tmp$Feature[tmp$Feature != "Leaf"])
+        n_a_selected = length(used)
+        attr(n_a_selected, "n_selected") = n_selected
+        attr(n_a_selected, "used") = used
+        n_selected = n_a_selected
+
+      }
 
       if (self$param_set$values$normalize) {
         n_selected = n_selected / n_selected_total
@@ -102,9 +118,12 @@ MeasureIAMLSelectedInteractions = R6Class("MeasureIAMLSelectedInteractions",
     initialize = function() {
       param_set = ps(
         normalize = p_lgl(default = FALSE, tags = "required"),
-        interaction_id = p_uty(tags = "required")
+        actually_used = p_lgl(default = FALSE, tags = "required"),
+        interaction_id = p_uty(tags = "required"),
+        learner_id = p_uty(tags = "required")
+
       )
-      param_set$values = list(normalize = FALSE, interaction_id = "classif.xgboost.interaction_constraints")
+      param_set$values = list(normalize = FALSE, actually_used = FALSE, interaction_id = "classif.xgboost.interaction_constraints", learner_id = "classif.xgboost")
 
       super$initialize(
         id = "iaml_selected_interactions",
@@ -125,14 +144,45 @@ MeasureIAMLSelectedInteractions = R6Class("MeasureIAMLSelectedInteractions",
       # FIXME: bug in mlr3? learner param set is not pertained correctly, therefore values are always the same, therefore fix this in Tuners for now
       n_interactions = attr(learner$param_set$values[[self$param_set$values$interaction_id]], "n_interactions")
       n_interactions_total = attr(learner$param_set$values[[self$param_set$values$interaction_id]], "n_interactions_total")
+
+      if (self$param_set$values$actually_used) {
+        # FIXME:
+        xgb_model_name = self$param_set$values$learner_id
+        features = learner$model[[xgb_model_name]]$model$feature_names
+        pairs = tryCatch(interactions(learner$model[[xgb_model_name]]$model, option = "pairs"), error = function(ec) data.table())
+        tmp = get_actual_interactions(features, pairs)
+        n_a_interactions = tmp$n_interactions
+        attr(n_a_interactions, "n_interactions") = n_interactions
+        attr(n_a_interactions, "I") = tmp$I  # FIXME: not transitively closed
+        n_interactions = n_a_interactions
+      }
+
       if (self$param_set$values$normalize) {
         n_interactions = n_interactions / n_interactions_total
+        if (n_interactions_total == 0) {
+          n_interactions = 0
+        }
       }
 
       n_interactions
     }
   )
 )
+
+get_actual_interactions = function(features, pairs) {
+  I = matrix(0L, nrow = length(features), ncol = length(features))
+  for (f1 in unique(c(pairs$Parent, pairs$Child))) {
+    tmp = pairs[Parent == f1 | Child == f1]
+    interactors = unique(c(tmp$Parent, tmp$Child))
+    i = match(f1, features)
+    js = match(interactors, features)
+    I[i, js] = 1L
+    I[js, i] = 1L
+  }
+  diag(I) = 1L
+  # Note: I must not be transitive; but we could consider the transitive closure
+  list(n_interactions = sum(I[upper.tri(I)]), I = I)
+}
 
 #' @title IAML Selected Non Monotone Features Measure
 #'
@@ -169,9 +219,11 @@ MeasureIAMLSelectedNonMonotone = R6Class("MeasureIAMLSelectedNonMonotone",
     initialize = function() {
       param_set = ps(
         normalize = p_lgl(default = FALSE, tags = "required"),
-        monotone_id = p_uty(tags = "required")
+        actually_used = p_lgl(default = FALSE, tags = "required"),
+        monotone_id = p_uty(tags = "required"),
+        learner_id = p_uty(tags = "required")
       )
-      param_set$values = list(normalize = FALSE, monotone_id = "classif.xgboost.monotone_constraints")
+      param_set$values = list(normalize = FALSE, actually_used = FALSE, monotone_id = "classif.xgboost.monotone_constraints", learner_id = "classif.xgboost")
 
       super$initialize(
         id = "iaml_selected_non_monotone",
@@ -192,6 +244,22 @@ MeasureIAMLSelectedNonMonotone = R6Class("MeasureIAMLSelectedNonMonotone",
       # FIXME: bug in mlr3? learner param set is not pertained correctly, therefore values are always the same, therefore fix this in Tuners for now
       n_non_monotone = attr(learner$param_set$values[[self$param_set$values$monotone_id]], "n_non_monotone")
       n_non_monotone_total = attr(learner$param_set$values[[self$param_set$values$monotone_id]], "n_non_monotone_total")
+
+      if (self$param_set$values$actually_used) {
+        # FIXME:
+        xgb_model_name = self$param_set$values$learner_id
+        features = learner$model[[xgb_model_name]]$model$feature_names
+        tmp = tryCatch(xgb_model_dt_tree(features, learner$model[[xgb_model_name]]$model),
+          error = function(ec) data.table())
+        used = unique(tmp$Feature[tmp$Feature != "Leaf"])
+        a_non_monotone = learner$param_set$values[[self$param_set$values$monotone_id]]
+        a_non_monotone = a_non_monotone[names(a_non_monotone) %in% used]
+        n_a_non_monotone = sum(a_non_monotone == 0)
+        attr(n_a_non_monotone, "n_non_monotone") = n_non_monotone
+        attr(n_a_non_monotone, "a_non_monotone") = a_non_monotone
+        n_non_monotone = n_a_non_monotone
+      }
+
       if (self$param_set$values$normalize) {
         n_non_monotone = n_non_monotone / n_non_monotone_total
       }

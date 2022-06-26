@@ -5,14 +5,14 @@ library(pammtools)
 
 dat = readRDS("iaml_prototype.rds")
 ys = c("classif.ce", "iaml_selected_features", "iaml_selected_interactions", "iaml_selected_non_monotone")
-n_features = list("40981" = 43, "1169" = 615, "1464" = 5, "1489" = 6, "4135" = 4508, "1485" = 501, "41144" = 260)
+n_features = data.table(task_id = c(40981, 1169, 1464, 1489, 4135, 1485, 41144), n = c(22, 11, 4, 5, 18, 500, 259))
 res = map_dtr(unique(dat$task_id), function(task_id_) {
-  n = n_features[[as.character(task_id_)]]
   map_dtr(unique(dat$repl), function(repl_) {
     tmp = dat[task_id == task_id_ & repl == repl_]
-    tmp[, iaml_selected_features := iaml_selected_features / n]
-    tmp[, iaml_selected_interactions := iaml_selected_interactions / n ^ 2]
-    tmp[, iaml_selected_non_monotone := iaml_selected_non_monotone / n]
+    tmp[, classif.ce := (classif.ce - min(classif.ce)) / (max(classif.ce) - min(classif.ce))]
+    tmp[, iaml_selected_features := (iaml_selected_features - min(iaml_selected_features)) / (max(iaml_selected_features) - min(iaml_selected_features))]
+    tmp[, iaml_selected_interactions := (iaml_selected_interactions - min(iaml_selected_interactions)) / (max(iaml_selected_interactions) - min(iaml_selected_interactions))]
+    tmp[, iaml_selected_non_monotone := (iaml_selected_non_monotone - min(iaml_selected_non_monotone)) / (max(iaml_selected_non_monotone) - min(iaml_selected_non_monotone))]
     if (nrow(tmp) == 2500L) {
       nadir = apply(tmp[, ..ys], 2, function(x) max(x) + 1)
       best = tmp[, ..ys]
@@ -46,9 +46,11 @@ res = map_dtr(unique(dat$task_id), function(task_id_) {
 })
 
 agg = res[, .(m_hv = mean(hv), s_hv = sd(hv) / sqrt(.N)), by = .(task_id, batch_nr, method)]
+agg = merge(agg, n_features, by = "task_id")
+agg[, task_id := paste0(task_id, ": ", n)]
 
 g = ggplot(aes(x = batch_nr, y = m_hv, colour = method, fill = method), data = agg[batch_nr >= 30L]) +
   geom_step() + labs(y = "Diff Dom HV", x = "Iteration") +
-  #geom_stepribbon(aes(ymin = m_hv - s_hv, ymax = m_hv + s_hv), colour = NA, alpha = 0.3) +
+  geom_stepribbon(aes(ymin = m_hv - s_hv, ymax = m_hv + s_hv), colour = NA, alpha = 0.3) +
   facet_wrap(~ task_id, scales = "free")
 ggsave(file = "test_bench.png", plot = g)

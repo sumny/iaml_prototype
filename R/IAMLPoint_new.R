@@ -79,8 +79,9 @@ IAMLPointNEW = R6Class("IAMLPoint",
     create_interaction_constraints = function() {
       I = list(I = self$get_matrix(), classes = map(self$get_groups()[-1L], function(x) match(x, self$selected_features)))
       interaction_constraints = I$classes
-      n_interactions = sum(I$I)
-      n_interactions_total = nrow(I$I) ^ 2L
+      n_interactions = sum(I$I[upper.tri(I$I)])
+      stopifnot(nrow(I$I) == self$n_selected)  # I is only dim n_selected x n_selected
+      n_interactions_total = self$n_selected * (self$n_selected - 1L) / 2L  # number of elements of upper tri without diag
       interaction_constraints = map(interaction_constraints, function(x) x - 1L)  # must start at 0
       # FIXME:
       attr(interaction_constraints, "n_interactions") = n_interactions
