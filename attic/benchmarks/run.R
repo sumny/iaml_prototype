@@ -89,7 +89,8 @@ eval_ = function(job, data, instance, ...) {
     resampling,
     measures,
     terminator,
-    search_space
+    search_space,
+    store_models = TRUE
   )
 
   mu = 30L
@@ -153,7 +154,7 @@ for (optimizer_id in c("eawm", "eaw", "ea", "rsw", "rs")) {
   ids = addExperiments(
       prob.designs = prob_designs,
       algo.designs = list(eval_ = data.table(optimizer = optimizer_id)),
-      repls = 5L
+      repls = 10L
   )
   addJobTags(ids, optimizer_id)
 }
