@@ -37,13 +37,13 @@ eval_ = function(job, data, instance, ...) {
   resampling = instance$resampling
   actually_used = instance$actually_used
   optimizer_id = job$algo.pars$optimizer
-  learner = if (optimizer_id == "eawm") {
+  if (optimizer_id == "eawm") {
     learner = as_learner(po("colapply") %>>% po("select") %>>% lrn("classif.xgboost"))
     learner$param_set$values$classif.xgboost.booster = "gbtree"
     learner$param_set$values$classif.xgboost.tree_method = "exact"
     learner$param_set$values$colapply.applicator = function(x) - x
   } else {
-    learner = as_learner(po("select") %>>% lrn("classif.xgboost"))  # GraphLearner via mlr3pipelines
+    learner = as_learner(po("select") %>>% lrn("classif.xgboost"))
     learner$param_set$values$classif.xgboost.booster = "gbtree"
     learner$param_set$values$classif.xgboost.tree_method = "exact"
   }
@@ -172,6 +172,7 @@ tab = getJobTable()
 tab = tab[job.id %in% findDone()$job.id]
 results = reduceResultsDataTable(tab$job.id, fun = function(x, job) {
   data = x[, c("classif.ce", "iaml_selected_features", "iaml_selected_interactions", "iaml_selected_non_monotone", "batch_nr"), with = FALSE]
+  data[, actually_used := job$prob.pars$actually_used]
   data[, task_id := job$prob.pars$id]
   data[, method := job$algo.pars$optimizer]
   data[, repl := job$repl]
@@ -180,35 +181,3 @@ results = reduceResultsDataTable(tab$job.id, fun = function(x, job) {
 results = rbindlist(results$result, fill = TRUE)
 saveRDS(results, "/gscratch/lschnei8/iaml_prototype.rds")
 
-# FIXME: in analysis check which were one hot encoded and which were not
-#nadir = apply(rbind(eawm_data[, instance$archive$cols_y, with = FALSE], ea_data[, instance$archive$cols_y, with = FALSE], eaw_data[, instance$archive$cols_y, with = FALSE], rs_data[, instance$archive$cols_y, with = FALSE]), MARGIN = 2L, FUN = function(x) max(x) + 1L)
-
-
-#
-#tmp = map_dtr(1:500, function(bnr) {
-#  eawm_y = eawm_data[batch_nr <= bnr, instance$archive$cols_y, with = FALSE]
-#  eawm_y = eawm_y[!bbotk::is_dominated(t(eawm_y)), ]
-#  ea_y = ea_data[batch_nr <= bnr, instance$archive$cols_y, with = FALSE]
-#  ea_y = ea_y[!bbotk::is_dominated(t(ea_y)), ]
-#  eaw_y = eaw_data[batch_nr <= bnr, instance$archive$cols_y, with = FALSE]
-#  eaw_y = eaw_y[!bbotk::is_dominated(t(eaw_y)), ]
-#  rs_y = rs_data[batch_nr <= bnr, instance$archive$cols_y, with = FALSE]
-#  rs_y = rs_y[!bbotk::is_dominated(t(rs_y)), ]
-#
-#  eawm_hv = emoa::dominated_hypervolume(t(eawm_y), ref = nadir)
-#  ea_hv = emoa::dominated_hypervolume(t(ea_y), ref = nadir)
-#  eaw_hv = emoa::dominated_hypervolume(t(eaw_y), ref = nadir)
-#  rs_hv = emoa::dominated_hypervolume(t(rs_y), ref = nadir)
-#  hvs = rbind(data.table(hv = eawm_hv, method = "eawm"), data.table(hv = ea_hv, method = "ea"), data.table(hv = rs_hv, method = "rs"), data.table(hv = eaw_hv, method = "eaw"))
-#  hvs[, batch_nr := bnr]
-#  hvs[, repl := r]
-#  hvs
-#})
-#
-#
-#agg = res[, .(m_hv = mean(hv), s_hv = sd(hv) / sqrt(hv)), by = .(method, batch_nr)]
-#
-#g = ggplot(aes(x = batch_nr, y = m_hv, colour = method, fill = method), data = agg[batch_nr > 30]) +
-#  geom_step() + labs(y = "Dom HV", x = "Iteration") +
-#  geom_stepribbon(aes(ymin = m_hv - s_hv, ymax = m_hv + s_hv), colour = NA, alpha = 0.3)
-#ggsave(file = "spam_eaw.png", plot = g)

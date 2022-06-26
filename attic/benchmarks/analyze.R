@@ -4,6 +4,7 @@ library(ggplot2)
 library(pammtools)
 
 dat = readRDS("iaml_prototype.rds")
+dat = dat[actually_used == TRUE, ]
 ys = c("classif.ce", "iaml_selected_features", "iaml_selected_interactions", "iaml_selected_non_monotone")
 n_features = data.table(task_id = c(40981, 1169, 1464, 1489, 4135, 1485, 41144), n = c(22, 11, 4, 5, 18, 500, 259))
 res = map_dtr(unique(dat$task_id), function(task_id_) {
@@ -49,8 +50,11 @@ agg = res[, .(m_hv = mean(hv), s_hv = sd(hv) / sqrt(.N)), by = .(task_id, batch_
 agg = merge(agg, n_features, by = "task_id")
 agg[, task_id := paste0(task_id, ": ", n)]
 
-g = ggplot(aes(x = batch_nr, y = m_hv, colour = method, fill = method), data = agg[batch_nr >= 30L]) +
+g = ggplot(aes(x = batch_nr, y = m_hv, colour = method, fill = method), data = agg) +
+  scale_y_log10() +
   geom_step() + labs(y = "Diff Dom HV", x = "Iteration") +
   geom_stepribbon(aes(ymin = m_hv - s_hv, ymax = m_hv + s_hv), colour = NA, alpha = 0.3) +
-  facet_wrap(~ task_id, scales = "free")
-ggsave(file = "test_bench.png", plot = g)
+  facet_wrap(~ task_id, scales = "free") +
+  geom_vline(xintercept = 30) +
+  theme_minimal()
+ggsave(file = "bench_actually_false.png", plot = g)

@@ -60,18 +60,25 @@ MeasureIAMLSelectedFeatures = R6Class("MeasureIAMLSelectedFeatures",
       n_selected = attr(learner$param_set$values[[self$param_set$values$select_id]], "n_selected")
       n_selected_total = attr(learner$param_set$values[[self$param_set$values$select_id]], "n_selected_total")
 
+      # FIXME: log if tryCatch fails!
       if (self$param_set$values$actually_used) {
         # FIXME: check this
         xgb_model_name = self$param_set$values$learner_id
-        features = learner$model[[xgb_model_name]]$model$feature_names
-        tmp = tryCatch(xgboost::xgb.model.dt.tree(features, learner$model[[xgb_model_name]]$model),
-          error = function(ec) data.table())
+        if (xgb_model_name == "NULL") {  # hacky due to default xgb
+          features = learner$model$feature_names
+          n_selected_total = length(features)
+          tmp = tryCatch(xgb_model_dt_tree(features, learner$model),
+            error = function(ec) data.table())
+        } else {
+          features = learner$model[[xgb_model_name]]$model$feature_names
+          tmp = tryCatch(xgb_model_dt_tree(features, learner$model[[xgb_model_name]]$model),
+            error = function(ec) data.table())
+        }
         used = unique(tmp$Feature[tmp$Feature != "Leaf"])
         n_a_selected = length(used)
         attr(n_a_selected, "n_selected") = n_selected
         attr(n_a_selected, "used") = used
         n_selected = n_a_selected
-
       }
 
       if (self$param_set$values$normalize) {
@@ -145,11 +152,19 @@ MeasureIAMLSelectedInteractions = R6Class("MeasureIAMLSelectedInteractions",
       n_interactions = attr(learner$param_set$values[[self$param_set$values$interaction_id]], "n_interactions")
       n_interactions_total = attr(learner$param_set$values[[self$param_set$values$interaction_id]], "n_interactions_total")
 
+      # FIXME: log if tryCatch fails!
       if (self$param_set$values$actually_used) {
         # FIXME: check this
         xgb_model_name = self$param_set$values$learner_id
-        features = learner$model[[xgb_model_name]]$model$feature_names
-        pairs = tryCatch(interactions(learner$model[[xgb_model_name]]$model, option = "pairs"), error = function(ec) data.table())
+        if (xgb_model_name == "NULL") {  # hacky due to default xgb
+          features = learner$model$feature_names
+          n_selected_total = length(features)
+          n_interactions_total = (n_selected_total * (n_selected_total - 1)) / 2
+          pairs = tryCatch(interactions(learner$model, option = "pairs"), error = function(ec) data.table())
+        } else {
+          features = learner$model[[xgb_model_name]]$model$feature_names
+          pairs = tryCatch(interactions(learner$model[[xgb_model_name]]$model, option = "pairs"), error = function(ec) data.table())
+        }
         tmp = get_actual_interactions(features, pairs)
         n_a_interactions = tmp$n_interactions
         attr(n_a_interactions, "n_interactions") = n_interactions
@@ -245,19 +260,34 @@ MeasureIAMLSelectedNonMonotone = R6Class("MeasureIAMLSelectedNonMonotone",
       n_non_monotone = attr(learner$param_set$values[[self$param_set$values$monotone_id]], "n_non_monotone")
       n_non_monotone_total = attr(learner$param_set$values[[self$param_set$values$monotone_id]], "n_non_monotone_total")
 
+      # FIXME: log if tryCatch fails!
       if (self$param_set$values$actually_used) {
         # FIXME: check this
         xgb_model_name = self$param_set$values$learner_id
-        features = learner$model[[xgb_model_name]]$model$feature_names
-        tmp = tryCatch(xgb_model_dt_tree(features, learner$model[[xgb_model_name]]$model),
-          error = function(ec) data.table())
-        used = unique(tmp$Feature[tmp$Feature != "Leaf"])
-        a_non_monotone = learner$param_set$values[[self$param_set$values$monotone_id]]
-        a_non_monotone = a_non_monotone[names(a_non_monotone) %in% used]
-        n_a_non_monotone = sum(a_non_monotone == 0)
-        attr(n_a_non_monotone, "n_non_monotone") = n_non_monotone
-        attr(n_a_non_monotone, "a_non_monotone") = a_non_monotone
-        n_non_monotone = n_a_non_monotone
+        if (xgb_model_name == "NULL") {  # hacky due to default xgb
+          features = learner$model$feature_names
+          n_non_monotone_total = length(features)
+          tmp = tryCatch(xgb_model_dt_tree(features, learner$model),
+            error = function(ec) data.table())
+          used = unique(tmp$Feature[tmp$Feature != "Leaf"])
+          a_non_monotone = rep(0, length(used))
+          names(a_non_monotone) = used
+          n_a_non_monotone = sum(a_non_monotone == 0)
+          attr(n_a_non_monotone, "n_non_monotone") = n_non_monotone
+          attr(n_a_non_monotone, "a_non_monotone") = a_non_monotone
+          n_non_monotone = n_a_non_monotone
+        } else {
+          features = learner$model[[xgb_model_name]]$model$feature_names
+          tmp = tryCatch(xgb_model_dt_tree(features, learner$model[[xgb_model_name]]$model),
+            error = function(ec) data.table())
+          used = unique(tmp$Feature[tmp$Feature != "Leaf"])
+          a_non_monotone = learner$param_set$values[[self$param_set$values$monotone_id]]
+          a_non_monotone = a_non_monotone[names(a_non_monotone) %in% used]
+          n_a_non_monotone = sum(a_non_monotone == 0)
+          attr(n_a_non_monotone, "n_non_monotone") = n_non_monotone
+          attr(n_a_non_monotone, "a_non_monotone") = a_non_monotone
+          n_non_monotone = n_a_non_monotone
+        }
       }
 
       if (self$param_set$values$normalize) {
