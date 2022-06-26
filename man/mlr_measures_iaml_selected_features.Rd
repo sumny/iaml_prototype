@@ -38,7 +38,9 @@ msr("iaml_selected_features")
 \tabular{llll}{
    Id \tab Type \tab Default \tab Levels \cr
    normalize \tab logical \tab FALSE \tab TRUE, FALSE \cr
+   actually_used \tab logical \tab FALSE \tab TRUE, FALSE \cr
    select_id \tab untyped \tab - \tab  \cr
+   learner_id \tab untyped \tab - \tab  \cr
 }
 
 
