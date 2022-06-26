@@ -93,39 +93,46 @@ library(mlr3)
 library(mlr3tuning)
 library(mlr3learners)
 library(mlr3pipelines)
+library(mlr3oml)
 devtools::load_all()
 
 set.seed(2906)
-task = tsk("spam")
-learner = as_learner(po("select") %>>% lrn("classif.xgboost"))  # GraphLearner via mlr3pipelines
+task = tsk("oml", data_id = 1489)
+learner = as_learner(po("colapply") %>>% po("select") %>>% lrn("classif.xgboost"))
+learner$param_set$values$classif.xgboost.booster = "gbtree"
+learner$param_set$values$classif.xgboost.tree_method = "exact"
+learner$param_set$values$colapply.applicator = function(x) - x
 resampling = rsmp("cv", folds = 3L)
 resampling$instantiate(task)
 measures = list(msr("classif.ce"),
                 msr("iaml_selected_features",
-                    select_id = "select.selector"),  # param id
+                    select_id = "select.selector",
+                    normalize = FALSE, actually_used = TRUE),  # param id
                 msr("iaml_selected_interactions",
-                    interaction_id = "classif.xgboost.interaction_constraints"),  # param id
+                    interaction_id = "classif.xgboost.interaction_constraints",
+                    normalize = FALSE, actually_used = TRUE),  # param id
                 msr("iaml_selected_non_monotone",
-                    monotone_id = "classif.xgboost.monotone_constraints"))  # param id
-terminator = trm("evals", n_evals = 20L)
+                    monotone_id = "classif.xgboost.monotone_constraints",
+                    normalize = FALSE, actually_used = TRUE))  # param id
+terminator = trm("evals", n_evals = 100L)
 
 search_space = ps(
-  classif.xgboost.nrounds = p_dbl(lower = 1, upper = log(500), tags = c("int", "log"),
-                                  trafo = function(x) as.integer(round(exp(x)))),
+  classif.xgboost.nrounds = p_dbl(lower = 1, upper = log(1000), tags = c("int", "log"),
+                                  trafo = function(x) as.integer(round(exp(x))), default = log(500)),
   classif.xgboost.eta = p_dbl(lower = log(1e-4), upper = 0, tags = "log",
-                              trafo = function(x) exp(x)),
+                              trafo = function(x) exp(x), default = log(0.3)),
   classif.xgboost.gamma = p_dbl(lower = log(1e-4), upper = log(7), tags = "log",
-                                trafo = function(x) exp(x)),
+                                trafo = function(x) exp(x), default = log(1e-4)),
   classif.xgboost.lambda = p_dbl(lower = log(1e-4), upper = log(1000), tags = "log",
-                                 trafo = function(x) exp(x)),
+                                 trafo = function(x) exp(x), default = log(1)),
   classif.xgboost.alpha = p_dbl(lower = log(1e-4), upper = log(1000), tags = "log",
-                                trafo = function(x) exp(x)),
-  classif.xgboost.subsample = p_dbl(lower = 0.1, upper = 1),
-  classif.xgboost.max_depth = p_int(lower = 1L, upper = 15L),
-  classif.xgboost.min_child_weight = p_dbl(lower = 1, upper = log(150), tags = "log",
-                                           trafo = function(x) exp(x)),
-  classif.xgboost.colsample_bytree = p_dbl(lower = 0.01, upper = 1),
-  classif.xgboost.colsample_bylevel = p_dbl(lower = 0.01, upper = 1),
+                                trafo = function(x) exp(x), default = log(1e-4)),
+  classif.xgboost.subsample = p_dbl(lower = 0.1, upper = 1, default = 1),
+  classif.xgboost.max_depth = p_int(lower = 1L, upper = 15L, default = 6L),
+  classif.xgboost.min_child_weight = p_dbl(lower = log(exp(1)), upper = log(150), tags = "log",
+                                           trafo = function(x) exp(x), default = log(exp(1))),
+  classif.xgboost.colsample_bytree = p_dbl(lower = 0.01, upper = 1, default = 1),
+  classif.xgboost.colsample_bylevel = p_dbl(lower = 0.01, upper = 1, default = 1),
   select.selector = p_uty(),  # must be part of the search space
   classif.xgboost.interaction_constraints = p_uty(),  # must be part of the search space
   classif.xgboost.monotone_constraints = p_uty()  # must be part of the search space
@@ -137,14 +144,14 @@ instance = TuningInstanceMultiCrit$new(
   resampling,
   measures,
   terminator,
-  search_space
+  search_space,
+  store_models = TRUE
 )
 
-tuner = tnr("iaml_ea", mu = 10)  # see ?TunerIAMLEA
+tuner = tnr("iaml_ea_new", mu = 10)  # see ?TunerIAMLEA
 tuner$param_set$values$select_id = "select.selector"  # param id
 tuner$param_set$values$interaction_id = "classif.xgboost.interaction_constraints"  # param id
 tuner$param_set$values$monotone_id = "classif.xgboost.monotone_constraints"  # param id
-
 tuner$optimize(instance)
 pareto = instance$archive$best()  # Pareto optimal solutions
 ```

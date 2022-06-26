@@ -2,6 +2,7 @@
 
 # we assume integer or numeric features due to later using xgboost
 # logicals must be converted to integers
+# FIXME: check this and maybe use implementation from EBM
 InteractionDetector = R6Class("InteractionDetector",
   public = list(
     initialize = function(task, grid_size = 10L) {

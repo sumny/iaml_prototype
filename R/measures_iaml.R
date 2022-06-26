@@ -61,7 +61,7 @@ MeasureIAMLSelectedFeatures = R6Class("MeasureIAMLSelectedFeatures",
       n_selected_total = attr(learner$param_set$values[[self$param_set$values$select_id]], "n_selected_total")
 
       if (self$param_set$values$actually_used) {
-        # FIXME:
+        # FIXME: check this
         xgb_model_name = self$param_set$values$learner_id
         features = learner$model[[xgb_model_name]]$model$feature_names
         tmp = tryCatch(xgboost::xgb.model.dt.tree(features, learner$model[[xgb_model_name]]$model),
@@ -146,7 +146,7 @@ MeasureIAMLSelectedInteractions = R6Class("MeasureIAMLSelectedInteractions",
       n_interactions_total = attr(learner$param_set$values[[self$param_set$values$interaction_id]], "n_interactions_total")
 
       if (self$param_set$values$actually_used) {
-        # FIXME:
+        # FIXME: check this
         xgb_model_name = self$param_set$values$learner_id
         features = learner$model[[xgb_model_name]]$model$feature_names
         pairs = tryCatch(interactions(learner$model[[xgb_model_name]]$model, option = "pairs"), error = function(ec) data.table())
@@ -158,7 +158,7 @@ MeasureIAMLSelectedInteractions = R6Class("MeasureIAMLSelectedInteractions",
       }
 
       if (self$param_set$values$normalize) {
-        n_interactions = n_interactions / n_interactions_total
+        n_interactions = n_interactions / n_interactions_total  # FIXME: do we scale by all or only all based on actual selected features
         if (n_interactions_total == 0) {
           n_interactions = 0
         }
@@ -246,7 +246,7 @@ MeasureIAMLSelectedNonMonotone = R6Class("MeasureIAMLSelectedNonMonotone",
       n_non_monotone_total = attr(learner$param_set$values[[self$param_set$values$monotone_id]], "n_non_monotone_total")
 
       if (self$param_set$values$actually_used) {
-        # FIXME:
+        # FIXME: check this
         xgb_model_name = self$param_set$values$learner_id
         features = learner$model[[xgb_model_name]]$model$feature_names
         tmp = tryCatch(xgb_model_dt_tree(features, learner$model[[xgb_model_name]]$model),

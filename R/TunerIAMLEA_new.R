@@ -72,11 +72,10 @@ TunerIAMLEANEW = R6Class("TunerIAMLEANEW",
       task = inst$objective$task
 
       # initial population
-      # FIXME: initialize sIm separately from param_space
-      # FIXME: always add the unconstrained
-      population = generate_design_random(param_space, n = mu)$data  # param_space
+      #population = generate_design_random(param_space, n = mu - 1L)$data  # param_space
+      population = map_dtr(seq_len(mu), function(i) param_space$default)  # NOTE: for now, we use the initial design not random but defaults
 
-      n_selected = pmax(1L, pmin(rgeom(mu, prob = 0.2), nrow(task$feature_types)))
+      n_selected = pmax(1L, pmin(rgeom(mu, prob = 0.2), length(task$feature_names)))
       filter = FilterInformationGain$new()
       scores = as.data.table(filter$calculate(task))
       scores[, score := score / sum(score)]
@@ -89,13 +88,20 @@ TunerIAMLEANEW = R6Class("TunerIAMLEANEW",
       switch_sign_affected = monotonicity_detector$aic_table[aic_decreasing < aic_increasing][["feature_name"]]
       inst$objective$learner$param_set$values$colapply.affect_columns = selector_name(switch_sign_affected)
 
-      sIm = map_dtr(seq_len(mu), function(i) {  # sIm space
+      sIm = map_dtr(seq_len(mu - 1), function(i) {  # sIm space
         iaml = IAMLPointNEW$new(task, n_selected = n_selected[i], scores = scores, interaction_detector = interaction_detector)
         data.table(iaml = list(iaml),
                    s = list(iaml$create_selector()),
                    I = list(iaml$create_interaction_constraints()),
                    m = list(iaml$create_monotonicity_constraints()))
       })
+      # add the unconstrained
+      iaml_unconstrained = IAMLPointNEW$new(task, n_selected = length(task$feature_names), scores = scores, interaction_detector = interaction_detector, unconstrained = TRUE)
+      sIm_unconstrained = data.table(iaml = list(iaml_unconstrained),
+                                     s = list(iaml_unconstrained$create_selector()),
+                                     I = list(iaml_unconstrained$create_interaction_constraints()),
+                                     m = list(iaml_unconstrained$create_monotonicity_constraints()))
+      sIm = rbind(sIm, sIm_unconstrained)
       colnames(sIm) = c("iaml", select_id, interaction_id, monotone_id)
 
       population = cbind(population, sIm)

@@ -3,7 +3,7 @@
 # shuffle groups
 IAMLPointNEW = R6Class("IAMLPoint",
   public = list(
-    initialize = function(task, n_selected = NULL, scores = NULL, interaction_detector = NULL) {
+    initialize = function(task, n_selected = NULL, scores = NULL, interaction_detector = NULL, unconstrained = FALSE) {
       # checks and feature names
       assert_task(task, feature_types = c("integer", "numeric"))
       assert_int(n_selected, lower = 1L, upper = nrow(task$feature_types), null.ok = TRUE)
@@ -13,28 +13,36 @@ IAMLPointNEW = R6Class("IAMLPoint",
       n_features = length(feature_names)
       self$feature_names = feature_names
 
-      # sample selected features based on scores
-      selected_features = sort(sample(scores$feature, size = n_selected, replace = FALSE, prob = scores$score))
-
-      # eqcs
-      if (n_selected == 1L) {
-        eqcs = list(features = selected_features, eqcs = 1L, belonging = 1L)
+      if (unconstrained) {
+        selected_features = feature_names
+        eqcs = list(features = selected_features, eqcs = 1L, belonging = rep(1L, length(selected_features)))
+        # create group structure (including the first group being unselected)
+        self$groups = self$get_full_group_structure(eqcs, unselected_features = setdiff(feature_names, selected_features))
+        self$monotone_eqcs = data.table(eqcs = self$groups$eqcs, monotonicity = c(NA_integer_, 0L))
       } else {
-        k = sample(seq_len((n_selected * (n_selected - 1L)) / 2L), size = 1L)
-        belonging = interaction_detector$get_eqcs_from_top_k(k = k, features = selected_features)
-        belonging = match(belonging, sort(unique(belonging)))  # make eqcs start at 1
 
-        eqcs = unique(belonging)
-        eqcs = list(features = selected_features, eqcs = sort(eqcs), belonging = belonging)
+        # sample selected features based on scores
+        selected_features = sort(sample(scores$feature, size = n_selected, replace = FALSE, prob = scores$score))
+
+        # eqcs
+        if (n_selected == 1L) {
+          eqcs = list(features = selected_features, eqcs = 1L, belonging = 1L)
+        } else {
+          k = sample(seq_len((n_selected * (n_selected - 1L)) / 2L), size = 1L)
+          belonging = interaction_detector$get_eqcs_from_top_k(k = k, features = selected_features)
+          belonging = match(belonging, sort(unique(belonging)))  # make eqcs start at 1
+
+          eqcs = unique(belonging)
+          eqcs = list(features = selected_features, eqcs = sort(eqcs), belonging = belonging)
+        }
+
+        # create group structure (including the first group being unselected)
+        self$groups = self$get_full_group_structure(eqcs, unselected_features = setdiff(feature_names, selected_features))
+
+        # randomly sample monotonicity constraints of partitions
+        monotone_eqcs = c(NA_integer_, sample(c(0L, 1L), size = length(self$groups$eqcs) - 1L, replace = TRUE))  # first one is the not selected group
+        self$monotone_eqcs = data.table(eqcs = self$groups$eqcs, monotonicity = monotone_eqcs)
       }
-
-      # create group structure (including the first group being unselected)
-      self$groups = self$get_full_group_structure(eqcs, unselected_features = setdiff(feature_names, selected_features))
-
-      # FIXME:
-      # randomly sample monotonicity constraints of partitions
-      monotone_eqcs = c(NA_integer_, sample(c(0L, 1L), size = length(self$groups$eqcs) - 1L, replace = TRUE))  # first one is the not selected group
-      self$monotone_eqcs = data.table(eqcs = self$groups$eqcs, monotonicity = monotone_eqcs)
     },
 
     feature_names = NULL,
@@ -65,8 +73,6 @@ IAMLPointNEW = R6Class("IAMLPoint",
       reorder = match(rownames(I), self$selected_features)
       I[reorder, reorder]
     },
-
-    # FIXME: create_* should be ABs? or shouldn't they?
 
     create_selector = function() {
       s = selector_name(self$selected_features)
