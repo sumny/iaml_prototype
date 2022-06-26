@@ -12,7 +12,7 @@ library(iaml)
 RhpcBLASctl::blas_set_num_threads(1L)
 RhpcBLASctl::omp_set_num_threads(1L)
 
-# FIXME: use resampling splits etc., i.e. tasks instead of datasets
+# FIXME: use resampling splits etc., i.e., tasks instead of datasets
 
 eval_ = function(job, data, instance, ...) {
   library(mlr3)
@@ -35,6 +35,7 @@ eval_ = function(job, data, instance, ...) {
 
   task = instance$task
   resampling = instance$resampling
+  actually_used = instance$actually_used
   optimizer_id = job$algo.pars$optimizer
   learner = if (optimizer_id == "eawm") {
     learner = as_learner(po("colapply") %>>% po("select") %>>% lrn("classif.xgboost"))
@@ -48,31 +49,35 @@ eval_ = function(job, data, instance, ...) {
   }
 
   measures = list(msr("classif.ce"),
-                  msr("iaml_selected_features",
-                      select_id = "select.selector"),  # param id
-                  msr("iaml_selected_interactions",
-                      interaction_id = "classif.xgboost.interaction_constraints"),  # param id
-                  msr("iaml_selected_non_monotone",
-                      monotone_id = "classif.xgboost.monotone_constraints"))  # param id
+                msr("iaml_selected_features",
+                    select_id = "select.selector",
+                    normalize = FALSE, actually_used = actually_used),  # param id
+                msr("iaml_selected_interactions",
+                    interaction_id = "classif.xgboost.interaction_constraints",
+                    normalize = FALSE, actually_used = actually_used),  # param id
+                msr("iaml_selected_non_monotone",
+                    monotone_id = "classif.xgboost.monotone_constraints",
+                    normalize = FALSE, actually_used = actually_used))  # param id
+
   terminator = trm("evals", n_evals = 500L)
 
   search_space = ps(
     classif.xgboost.nrounds = p_dbl(lower = 1, upper = log(1000), tags = c("int", "log"),
-                                    trafo = function(x) as.integer(round(exp(x)))),
+                                    trafo = function(x) as.integer(round(exp(x))), default = log(500)),
     classif.xgboost.eta = p_dbl(lower = log(1e-4), upper = 0, tags = "log",
-                                trafo = function(x) exp(x)),
+                                trafo = function(x) exp(x), default = log(0.3)),
     classif.xgboost.gamma = p_dbl(lower = log(1e-4), upper = log(7), tags = "log",
-                                  trafo = function(x) exp(x)),
+                                  trafo = function(x) exp(x), default = log(1e-4)),
     classif.xgboost.lambda = p_dbl(lower = log(1e-4), upper = log(1000), tags = "log",
-                                   trafo = function(x) exp(x)),
+                                   trafo = function(x) exp(x), default = log(1)),
     classif.xgboost.alpha = p_dbl(lower = log(1e-4), upper = log(1000), tags = "log",
-                                  trafo = function(x) exp(x)),
-    classif.xgboost.subsample = p_dbl(lower = 0.1, upper = 1),
-    classif.xgboost.max_depth = p_int(lower = 1L, upper = 15L),
-    classif.xgboost.min_child_weight = p_dbl(lower = 1, upper = log(150), tags = "log",
-                                             trafo = function(x) exp(x)),
-    classif.xgboost.colsample_bytree = p_dbl(lower = 0.01, upper = 1),
-    classif.xgboost.colsample_bylevel = p_dbl(lower = 0.01, upper = 1),
+                                  trafo = function(x) exp(x), default = log(1e-4)),
+    classif.xgboost.subsample = p_dbl(lower = 0.1, upper = 1, default = 1),
+    classif.xgboost.max_depth = p_int(lower = 1L, upper = 15L, default = 6L),
+    classif.xgboost.min_child_weight = p_dbl(lower = log(exp(1)), upper = log(150), tags = "log",
+                                             trafo = function(x) exp(x), default = log(exp(1))),
+    classif.xgboost.colsample_bytree = p_dbl(lower = 0.01, upper = 1, default = 1),
+    classif.xgboost.colsample_bylevel = p_dbl(lower = 0.01, upper = 1, default = 1),
     select.selector = p_uty(),  # must be part of the search space
     classif.xgboost.interaction_constraints = p_uty(),  # must be part of the search space
     classif.xgboost.monotone_constraints = p_uty()  # must be part of the search space
@@ -118,15 +123,18 @@ saveRegistry(reg)
 # Australian, car, airlines, blood-transfusion-service-center, phoneme, Amazon_employee_access, shuttle, madelon, madeline
 # FIXME: currently only twoclass works
 #ids = c(40981, 40975, 1169, 1464, 1489, 4135, 40685, 1485, 41144)
-ids = c(40981, 1169, 1464, 1489, 4135, 1485, 41144)
+ids = c(40981, 1464, 1489, 4135, 41144)
 tasks = map(ids, function(id) {
   task = tsk("oml", data_id = id)
   po("encodeimpact")$train(list(task))[[1L]]
 })
 resamplings = map(tasks, function(task) {
- rsmp("cv", folds = 3L)$instantiate(task)
+ set.seed(1)
+ rsmp("holdout", ratio = 0.8)$instantiate(task)
 })
-instances = data.table(id = ids, task = tasks, resampling = resamplings)
+instances = data.table(id = ids, task = tasks, resampling = resamplings, actually_used = FALSE)
+instances = rbind(instances, instances)
+instances[seq_along(ids), actually_used := TRUE]
 instances[, id_plan := 1:.N]
 
 # add problems
@@ -152,7 +160,7 @@ for (optimizer_id in c("eawm", "eaw", "ea", "rsw", "rs")) {
 
 # standard resources used to submit jobs to cluster
 resources.serial.default = list(
-  walltime = 3600L * 48L, memory = 1024L * 16L, max.concurrent.jobs = 9999L
+  walltime = 3600L * 14L, memory = 1024L * 16L, max.concurrent.jobs = 9999L
 )
 
 jobs = findJobs()
