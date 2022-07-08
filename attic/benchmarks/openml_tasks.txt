@@ -1,0 +1,12 @@
+# maybe set 1000 features as upper limit
+ada 190411
+australian 146818
+arcene 190412
+churn 359968
+gina 189922
+guillermo 359988
+philippine 190410
+ricardo 359989
+madeline 190392
+KDDCup09-Upselling 360975
+

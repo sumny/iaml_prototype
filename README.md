@@ -102,7 +102,7 @@ learner = as_learner(po("colapply") %>>% po("select") %>>% lrn("classif.xgboost"
 learner$param_set$values$classif.xgboost.booster = "gbtree"
 learner$param_set$values$classif.xgboost.tree_method = "exact"
 learner$param_set$values$colapply.applicator = function(x) - x
-resampling = rsmp("cv", folds = 3L)
+resampling = rsmp("holdout", ratio = 2/3)
 resampling$instantiate(task)
 measures = list(msr("classif.ce"),
                 msr("iaml_selected_features",

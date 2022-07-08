@@ -42,10 +42,12 @@ InteractionDetector = R6Class("InteractionDetector",
     rss = NULL,
 
     compute_best_rss = function() {
+      pb = progress_bar$new(format = "Interactions [:bar] :percent eta: :eta", total = (self$n_features * self$n_features - 1L) / 2L)
       rss = matrix(0, nrow = self$n_features, ncol = self$n_features)
         for (i in seq_len(self$n_features)) {
           for (j in seq_len(self$n_features)) {
             if (i < j) {
+              pb$tick()
               rss[i, j] = compute_best_rss_pairwise(self$xs[[i]], self$xs[[j]], self$y, self$grids[[i]], self$grids[[j]])
             }
           }

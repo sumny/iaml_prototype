@@ -105,7 +105,7 @@ learner = as_learner(po("colapply") %>>% po("select") %>>% lrn("classif.xgboost"
 learner$param_set$values$classif.xgboost.booster = "gbtree"
 learner$param_set$values$classif.xgboost.tree_method = "exact"
 learner$param_set$values$colapply.applicator = function(x) - x
-resampling = rsmp("cv", folds = 3L)
+resampling = rsmp("holdout", ratio = 2/3)
 resampling$instantiate(task)
 measures = list(msr("classif.ce"),
                 msr("iaml_selected_features",
@@ -117,7 +117,11 @@ measures = list(msr("classif.ce"),
                 msr("iaml_selected_non_monotone",
                     monotone_id = "classif.xgboost.monotone_constraints",
                     normalize = FALSE, actually_used = TRUE))  # param id
-terminator = trm("evals", n_evals = 100L)
+measures = list(msr("classif.ce"),
+                msr("iaml_selected_features_proxy"),
+                msr("iaml_selected_interactions_proxy"),
+                msr("iaml_selected_non_monotone_proxy"))
+terminator = trm("evals", n_evals = 300L)
 
 search_space = ps(
   classif.xgboost.nrounds = p_dbl(lower = 1, upper = log(1000), tags = c("int", "log"),
@@ -151,7 +155,7 @@ instance = TuningInstanceMultiCrit$new(
   store_models = TRUE
 )
 
-tuner = tnr("iaml_ea_new", mu = 10)  # see ?TunerIAMLEA
+tuner = tnr("iaml_ea_new", mu = 30)  # see ?TunerIAMLEA
 tuner$param_set$values$select_id = "select.selector"  # param id
 tuner$param_set$values$interaction_id = "classif.xgboost.interaction_constraints"  # param id
 tuner$param_set$values$monotone_id = "classif.xgboost.monotone_constraints"  # param id

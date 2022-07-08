@@ -57,4 +57,4 @@ g = ggplot(aes(x = batch_nr, y = m_hv, colour = method, fill = method), data = a
   facet_wrap(~ task_id, scales = "free") +
   geom_vline(xintercept = 30) +
   theme_minimal()
-ggsave(file = "bench_actually_false.png", plot = g)
+ggsave(file = "bench_actually_true.png", plot = g)

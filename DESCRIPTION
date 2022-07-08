@@ -24,6 +24,7 @@ Imports:
   mlr3filters,
   mlr3misc (>= 0.7.0),
   paradox (>= 0.8.0),
+  progress,
   R6,
   relations (>= 0.6-12),
   scam,

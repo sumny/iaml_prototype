@@ -48,16 +48,21 @@ eval_ = function(job, data, instance, ...) {
     learner$param_set$values$classif.xgboost.tree_method = "exact"
   }
 
+  #measures = list(msr("classif.ce"),
+  #              msr("iaml_selected_features",
+  #                  select_id = "select.selector",
+  #                  normalize = FALSE, actually_used = actually_used),  # param id
+  #              msr("iaml_selected_interactions",
+  #                  interaction_id = "classif.xgboost.interaction_constraints",
+  #                  normalize = FALSE, actually_used = actually_used),  # param id
+  #              msr("iaml_selected_non_monotone",
+  #                  monotone_id = "classif.xgboost.monotone_constraints",
+  #                  normalize = FALSE, actually_used = actually_used))  # param id
+
   measures = list(msr("classif.ce"),
-                msr("iaml_selected_features",
-                    select_id = "select.selector",
-                    normalize = FALSE, actually_used = actually_used),  # param id
-                msr("iaml_selected_interactions",
-                    interaction_id = "classif.xgboost.interaction_constraints",
-                    normalize = FALSE, actually_used = actually_used),  # param id
-                msr("iaml_selected_non_monotone",
-                    monotone_id = "classif.xgboost.monotone_constraints",
-                    normalize = FALSE, actually_used = actually_used))  # param id
+                msr("iaml_selected_features_proxy"),
+                msr("iaml_selected_interactions_proxy"),
+                msr("iaml_selected_non_monotone_proxy"))
 
   terminator = trm("evals", n_evals = 500L)
 
@@ -117,7 +122,7 @@ eval_ = function(job, data, instance, ...) {
 }
 
 library(batchtools)
-reg = makeExperimentRegistry(file.dir = "/gscratch/lschnei8/registry_iaml_prototype")
+reg = makeExperimentRegistry(file.dir = "/gscratch/lschnei8/registry_iaml_prototype_new")
 #reg = makeExperimentRegistry(file.dir = NA)
 saveRegistry(reg)
 
@@ -150,7 +155,8 @@ names(prob_designs) = nn
 # add eval_ algorithm (never use `eval` as a function name or have a function named `eval` in .GlobalEnv)
 addAlgorithm("eval_", fun = eval_)
 
-for (optimizer_id in c("eawm", "eaw", "ea", "rsw", "rs")) {
+#for (optimizer_id in c("eawm", "eaw", "ea", "rsw", "rs")) {
+for (optimizer_id in c("eawm") {
   ids = addExperiments(
       prob.designs = prob_designs,
       algo.designs = list(eval_ = data.table(optimizer = optimizer_id)),

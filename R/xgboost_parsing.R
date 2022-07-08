@@ -124,6 +124,11 @@ calculatePairsGainTable <- function(xgb_model) {
 
   treeList <- calculateGain(xgb_model)
   trees <- rbindlist(treeList, fill = TRUE)
+  if ("name_pair" %nin% colnames(trees)) {
+    trees[, name_pair := NA_character_]
+    importance = data.table(Parent = character(), Child = character(), sumGain = numeric(), frequency = integer())
+    return(importance)
+  }
 
   importanceCount <- data.table(table(trees[, "name_pair"],dnn = "name_pair"))
   importanceGain <- trees[, .(sumGain = sum(childsGain)), by = "name_pair"]

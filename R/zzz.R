@@ -14,6 +14,7 @@
 #' @import mlr3filters
 #' @import iml
 #' @import xgboost
+#' @import progress
 #' @importFrom stats setNames runif dnorm pnorm rnorm
 
 .onLoad = function(libname, pkgname) { # nolint
@@ -29,10 +30,13 @@
 
   # add iaml to measures dictionary
   x = utils::getFromNamespace("mlr_measures", ns = "mlr3")
+  x$add("iaml_selected_features_proxy", function() MeasureIAMLSelectedFeaturesProxy$new())
+  x$add("iaml_selected_interactions_proxy", function() MeasureIAMLSelectedInteractionsProxy$new())
+  x$add("iaml_selected_non_monotone_proxy", function() MeasureIAMLSelectedNonMonotoneProxy$new())
   x$add("iaml_selected_features", function() MeasureIAMLSelectedFeatures$new())
   x$add("iaml_selected_interactions", function() MeasureIAMLSelectedInteractions$new())
   x$add("iaml_selected_non_monotone", function() MeasureIAMLSelectedNonMonotone$new())
-  # add iaml to measures dictionary
+  # add iml to measures dictionary
   x$add("iml_number_of_features", function() MeasureIMLNF$new())
   x$add("iml_interaction_strength", function() MeasureIMLIAS$new())
   x$add("iml_main_effect_complexity", function() MeasureIMLMEC$new())
