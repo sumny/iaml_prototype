@@ -17,8 +17,6 @@ source_files = file.path(root, "attic", "benchmarks", c("helpers.R", "search_spa
 RhpcBLASctl::blas_set_num_threads(1L)
 RhpcBLASctl::omp_set_num_threads(1L)
 
-# FIXME: use resampling splits etc., i.e., tasks instead of datasets
-
 eval_ = function(job, data, instance, ...) {
   library(mlr3)
   library(mlr3learners)

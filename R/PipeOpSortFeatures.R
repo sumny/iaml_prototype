@@ -1,3 +1,4 @@
+#' @export
 PipeOpSortFeatures = R6Class("PipeOpSortFeatures",
   inherit = PipeOpTaskPreprocSimple,
   public = list(
