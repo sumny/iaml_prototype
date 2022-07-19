@@ -27,23 +27,23 @@ eval_ = function(job, data, instance, ...) {
   RhpcBLASctl::blas_set_num_threads(1L)
   RhpcBLASctl::omp_set_num_threads(1L)
 
-  #logger = lgr::get_logger("mlr3")
-  #logger$set_threshold("warn")
-  #logger = lgr::get_logger("bbotk")
-  #logger$set_threshold("warn")
-  #future::plan("sequential")
+  logger = lgr::get_logger("mlr3")
+  logger$set_threshold("warn")
+  logger = lgr::get_logger("bbotk")
+  logger$set_threshold("warn")
+  future::plan("sequential")
 
   task = instance$task
   resampling = instance$resampling
   actually_used = instance$actually_used
   optimizer_id = job$algo.pars$optimizer
   if (optimizer_id == "eawm") {
-    learner = as_learner(po("colapply") %>>% po("select") %>>% lrn("classif.xgboost"))
+    learner = as_learner(po("colapply") %>>% po("select") %>>% po("sortfeatures") %>>% lrn("classif.xgboost"))
     learner$param_set$values$classif.xgboost.booster = "gbtree"
     learner$param_set$values$classif.xgboost.tree_method = "exact"
     learner$param_set$values$colapply.applicator = function(x) - x
   } else {
-    learner = as_learner(po("select") %>>% lrn("classif.xgboost"))
+    learner = as_learner(po("select") %>>% po("sortfeatures") %>>% lrn("classif.xgboost"))
     learner$param_set$values$classif.xgboost.booster = "gbtree"
     learner$param_set$values$classif.xgboost.tree_method = "exact"
   }
@@ -67,7 +67,7 @@ eval_ = function(job, data, instance, ...) {
   terminator = trm("evals", n_evals = 500L)
 
   search_space = ps(
-    classif.xgboost.nrounds = p_dbl(lower = 1, upper = log(1000), tags = c("int", "log"),
+    classif.xgboost.nrounds = p_dbl(lower = 1, upper = log(5000), tags = c("int", "log"),
                                     trafo = function(x) as.integer(round(exp(x))), default = log(500)),
     classif.xgboost.eta = p_dbl(lower = log(1e-4), upper = 0, tags = "log",
                                 trafo = function(x) exp(x), default = log(0.3)),
@@ -130,8 +130,8 @@ saveRegistry(reg)
 # FIXME: currently only twoclass works
 #ids = c(40981, 40975, 1169, 1464, 1489, 4135, 40685, 1485, 41144)
 ids = c(40981, 1464, 1489, 4135, 41144)
-tasks = map(ids, function(id) {
-  task = tsk("oml", data_id = id)
+tasks = map(ids, function(id) {  # FIXME: discuss this
+  task = tsk("oml", task_id = id)
   po("encodeimpact")$train(list(task))[[1L]]
 })
 resamplings = map(tasks, function(task) {
@@ -156,7 +156,7 @@ names(prob_designs) = nn
 addAlgorithm("eval_", fun = eval_)
 
 #for (optimizer_id in c("eawm", "eaw", "ea", "rsw", "rs")) {
-for (optimizer_id in c("eawm") {
+for (optimizer_id in c("eawm")) {
   ids = addExperiments(
       prob.designs = prob_designs,
       algo.designs = list(eval_ = data.table(optimizer = optimizer_id)),
@@ -167,7 +167,7 @@ for (optimizer_id in c("eawm") {
 
 # standard resources used to submit jobs to cluster
 resources.serial.default = list(
-  walltime = 3600L * 14L, memory = 1024L * 16L, max.concurrent.jobs = 9999L
+  walltime = 3600L * 24L, memory = 1024L * 16L, max.concurrent.jobs = 9999L
 )
 
 jobs = findJobs()
@@ -178,7 +178,7 @@ submitJobs(jobs, resources = resources.serial.default)
 tab = getJobTable()
 tab = tab[job.id %in% findDone()$job.id]
 results = reduceResultsDataTable(tab$job.id, fun = function(x, job) {
-  data = x[, c("classif.ce", "iaml_selected_features", "iaml_selected_interactions", "iaml_selected_non_monotone", "batch_nr"), with = FALSE]
+  data = x[, c("classif.ce", "iaml_selected_features_proxy", "iaml_selected_interactions_proxy", "iaml_selected_non_monotone_proxy", "batch_nr"), with = FALSE]
   data[, actually_used := job$prob.pars$actually_used]
   data[, task_id := job$prob.pars$id]
   data[, method := job$algo.pars$optimizer]
@@ -186,5 +186,5 @@ results = reduceResultsDataTable(tab$job.id, fun = function(x, job) {
   data
 })
 results = rbindlist(results$result, fill = TRUE)
-saveRDS(results, "/gscratch/lschnei8/iaml_prototype.rds")
+saveRDS(results, "/gscratch/lschnei8/iaml_prototype_new.rds")
 

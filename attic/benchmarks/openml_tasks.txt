@@ -1,12 +1,19 @@
-# maybe set 1000 features as upper limit
-ada 190411
-australian 146818
-arcene 190412
-churn 359968
-gina 189922
-guillermo 359988
-philippine 190410
-ricardo 359989
-madeline 190392
-KDDCup09-Upselling 360975
+task               id       n       p   p_  any_binary_or_less
+ada                190411   4147    48  48  y
+APSFailure         168868   76000   170 170 y
+blood-t-s-v        359955   748     4   4   n
+gina               189922   3153    970 970 n
+kc1                359962   2109    21  21  n
+madeline           190392   3140    259 259 n
+numerai28.6        167120   96320   21  21  n
+ozone-level-8hr    190137   2534    72  72  n
+pc4                359958   1458    37  37  y
+philippine         190410   5832    308 308 n
+phoneme            168350   5404    5   5   n
+qsar-biodeg        359956   1055    41  41  y
+Satellite          359975   5100    36  36  n
+sylvine            359972   5124    20  20  n
+wilt               146820   4898    5   5   n
+
+all tasks from AutoML classification suite, binary classification, numeric or integer features, < 100.000 obs, < 1000 features
 
