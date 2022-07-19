@@ -122,7 +122,7 @@ nested_resampling_xgboost = function(task_train, task_test, resampling_inner, n_
   features = model$feature_names  # pre-selected based on selector
   stopifnot(all(features == sort(features)))  # if internal xgboost feature representation does not match the alphabetically ordered one something is really messed up
   n_selected_total = length(task_train$feature_names)  # all
-  tmp = tryCatch(xgb_model_dt_tree(features, model = model), error = function(ec) {
+  tmp = tryCatch(iaml:::xgb_model_dt_tree(features, model = model), error = function(ec) {
     NULL
   })
   used = if (is.null(tmp)) {
@@ -134,7 +134,7 @@ nested_resampling_xgboost = function(task_train, task_test, resampling_inner, n_
   n_selected = n_selected / n_selected_total  # normalize
 
   n_interactions_total = (n_selected_total * (n_selected_total - 1L)) / 2L
-  pairs = tryCatch(interactions(model, option = "pairs"), error = function(ec) {
+  pairs = tryCatch(iaml:::interactions(model, option = "pairs"), error = function(ec) {
     NULL
   })
   if (is.null(pairs)) {
@@ -144,7 +144,7 @@ nested_resampling_xgboost = function(task_train, task_test, resampling_inner, n_
     belonging[match(names(used), names(belonging))] = 1L
     belonging = belonging + 1L
   } else {
-    tmp = get_actual_interactions(used, pairs)
+    tmp = iaml:::get_actual_interactions(used, pairs)
     n_interactions = tmp$n_interactions
     belonging = rep(0L, length(task_train$feature_names))
     names(belonging) = sort(task_train$feature_names)
@@ -263,7 +263,7 @@ random_forest = function(task_train, task_test, ...) {
   features = model$feature_names  # pre-selected based on selector
   stopifnot(all(features == sort(features)))  # if internal xgboost feature representation does not match the alphabetically ordered one something is really messed up
   n_selected_total = length(task_train$feature_names)  # all
-  tmp = tryCatch(xgb_model_dt_tree(features, model = model), error = function(ec) {
+  tmp = tryCatch(iaml:::xgb_model_dt_tree(features, model = model), error = function(ec) {
     NULL
   })
   used = if (is.null(tmp)) {
@@ -275,7 +275,7 @@ random_forest = function(task_train, task_test, ...) {
   n_selected = n_selected / n_selected_total  # normalize
 
   n_interactions_total = (n_selected_total * (n_selected_total - 1L)) / 2L
-  pairs = tryCatch(interactions(model, option = "pairs"), error = function(ec) {
+  pairs = tryCatch(iaml:::interactions(model, option = "pairs"), error = function(ec) {
     NULL
   })
   if (is.null(pairs)) {
@@ -285,7 +285,7 @@ random_forest = function(task_train, task_test, ...) {
     belonging[match(names(used), names(belonging))] = 1L
     belonging = belonging + 1L
   } else {
-    tmp = get_actual_interactions(used, pairs)
+    tmp = iaml:::get_actual_interactions(used, pairs)
     n_interactions = tmp$n_interactions
     belonging = rep(0L, length(task_train$feature_names))
     names(belonging) = sort(task_train$feature_names)

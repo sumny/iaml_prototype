@@ -24,6 +24,7 @@ eval_ = function(job, data, instance, ...) {
   library(mlr3pipelines)
   library(mlr3misc)
   library(mlr3tuning)
+  library(mlr3mbo)
   library(paradox)
   library(iaml)
   # FIXME: EBmlr3
