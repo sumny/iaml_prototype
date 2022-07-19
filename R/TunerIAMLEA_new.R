@@ -22,6 +22,8 @@
 #' ID of param in Learner that sets monotonicity constraints.}
 #' \item{`mu`}{`integer(1)`\cr
 #' Population size.}
+#' \item{`lambda`}{`integer(1)`\cr
+#' Offspring size of each generation.}}
 #'
 #' @template section_progress_bars
 #' @template section_logging
@@ -40,15 +42,16 @@ TunerIAMLEANEW = R6Class("TunerIAMLEANEW",
         select_id = p_uty(tags = "required"),
         interaction_id = p_uty(tags = "required"),
         monotone_id = p_uty(tags = "required"),
-        mu = p_int(default = 30L, tags = "required")
+        mu = p_int(default = 30L, tags = "required"),
+        lambda = p_int(default = 20L, tags = "required")
       )
       param_set$values = list(select_id = "select.selector", interaction_id = "classif.xgboost.interaction_constraints", monotone_id = "classif.xgboost.monotone_constraints")
       super$initialize(
         param_set = param_set,
         param_classes = c("ParamDbl", "ParamFct", "ParamInt", "ParamLgl", "ParamUty"),
         properties = "multi-crit",
-        #packages = "iaml",
-        label = "FIXME:",
+        packages = "iaml",
+        label = "Joint HPO and Optimization of Feature Selection, Interaction Constraints and Monotonicity Constraints",
         man = "iaml::mlr_tuners_iaml_ea"
       )
     }
@@ -56,27 +59,35 @@ TunerIAMLEANEW = R6Class("TunerIAMLEANEW",
 
   private = list(
     .optimize = function(inst) {
-      mu = self$param_set$values$mu
       select_id = self$param_set$values$select_id
       interaction_id = self$param_set$values$interaction_id
       monotone_id = self$param_set$values$monotone_id
       mu = self$param_set$values$mu
+      lambda = self$param_set$values$lambda
       # split param space from sIm space
       param_ids = setdiff(inst$search_space$ids(), c(select_id, interaction_id, monotone_id))
       param_space = ParamSet$new(inst$search_space$params[param_ids])
       param_space$trafo = inst$search_space$trafo
       param_space$deps = inst$search_space$deps
-      # get sds of numeric params for mutation
-      sds = map(names(which(param_space$is_number)), function(param_id_number) (1 / 12) * (param_space$params[[param_id_number]]$upper - param_space$params[[param_id_number]]$lower) ^ 2)  # FIXME: log scale
-      names(sds) = names(which(param_space$is_number))
+      # get ranges of numeric params for mutation
+      # FIXME: what if on log
+      ranges = map(names(which(param_space$is_number)), function(param_id_number) param_space$params[[param_id_number]]$upper - param_space$params[[param_id_number]]$lower)
+      names(ranges) = names(which(param_space$is_number))
 
-      task = inst$objective$task  # FIXME: whole validation set?
+      task = inst$objective$task
 
       # initial population
-      #population = generate_design_random(param_space, n = mu - 1L)$data  # param_space
       population = map_dtr(seq_len(mu), function(i) param_space$default)  # NOTE: for now, we use the initial design not random but defaults
+      # we then mutate the initial design like during the GA but with p = 0.5 for each param
+      for (j in seq_len(nrow(population))) {
+        for(param_id in param_ids) {
+          population[j, ][[param_id]] = mutate(population[j, ][[param_id]], param = param_space$params[[param_id]], range = ranges[[param_id]], p = 0.5)
+        }
+      }
 
-      n_selected = pmax(1L, pmin(rgeom(mu, prob = 0.2), length(task$feature_names)))  # number of selected features sampled from truncated geometric distribution
+      n_selected_prob = 1 / get_n_selected_rpart(task)
+      n_selected = replicate(mu, sample_from_truncated_geom(n_selected_prob, lower = 1L, upper = length(task$feature_names)))  # number of selected features sampled from truncated geometric distribution
+      # FIXME: detectors could and should be used outside
       filter = FilterInformationGain$new()  # NOTE: can use any other Filter or use a custom FilterEnsemble
       scores = as.data.table(filter$calculate(task))  # filter scores are used to weight probabilities of inclusion in IAMLPointNEW
       scores[, score := score / sum(score)]
@@ -85,19 +96,20 @@ TunerIAMLEANEW = R6Class("TunerIAMLEANEW",
       interaction_detector$compute_best_rss()
       monotonicity_detector = MonotonicityDetector$new(task)  # monotonicity detection
       monotonicity_detector$compute_aics()
-      # FIXME: switching the sign of features that should be monotone decreasing; this should happen outside the optimizer
+      monotonicity_detector$compute_unconstrained_weights()
+      unconstrained_weight_table = monotonicity_detector$unconstrained_weight_table
       switch_sign_affected = monotonicity_detector$aic_table[aic_decreasing < aic_increasing][["feature_name"]]
       inst$objective$learner$param_set$values$colapply.affect_columns = selector_name(switch_sign_affected)
 
       sIm = map_dtr(seq_len(mu - 1), function(i) {  # sIm space
-        iaml = IAMLPointNEW$new(task, n_selected = n_selected[i], scores = scores, interaction_detector = interaction_detector)
+        iaml = IAMLPointNEW$new(task, n_selected = n_selected[i], scores = scores, interaction_detector = interaction_detector, unconstrained_weight_table = unconstrained_weight_table)
         data.table(iaml = list(iaml),
                    s = list(iaml$create_selector()),
                    I = list(iaml$create_interaction_constraints()),
                    m = list(iaml$create_monotonicity_constraints()))
       })
       # add the unconstrained sIm point (to make sure we also have the most complex sIm)
-      iaml_unconstrained = IAMLPointNEW$new(task, n_selected = length(task$feature_names), scores = scores, interaction_detector = interaction_detector, unconstrained = TRUE)
+      iaml_unconstrained = IAMLPointNEW$new(task, n_selected = length(task$feature_names), scores = scores, interaction_detector = interaction_detector, unconstrained_weight_table = unconstrained_weight_table, unconstrained = TRUE)
       sIm_unconstrained = data.table(iaml = list(iaml_unconstrained),
                                      s = list(iaml_unconstrained$create_selector()),
                                      I = list(iaml_unconstrained$create_interaction_constraints()),
@@ -112,17 +124,14 @@ TunerIAMLEANEW = R6Class("TunerIAMLEANEW",
 
       # evaluate initial population
       # proxy measures for selected features, interactions and non monotone are evaluated here
-      # FIXME: use whole validation set?
       learner_for_measures = inst$objective$learner$clone(deep = TRUE)
       orig_pvs = learner_for_measures$param_set$values
       for (i in seq_len(nrow(population))) {
-        # NOTE: cannot use i but we can use inst$archive$n_batch (due to synchronous evaluation)
-
-        # evaluate measures
         inst$eval_batch(population[i, ])
+        # NOTE: cannot use i but we can use inst$archive$n_batch (due to synchronous evaluation)
         j = inst$archive$n_batch
 
-        # FIXME: this messes with logging (proxy measures are logged and the updated ones are not logged)
+        # NOTE: this messes with logging (proxy measures are logged and the updated ones are not logged)
         # actually evaluate the proxy measures
         proxy_measures = calculate_proxy_measures(learner_for_measures, task = task, orig_pvs = orig_pvs, xdt = inst$archive$data[j, inst$archive$cols_x, with = FALSE], search_space = inst$search_space)
         inst$archive$data[j, iaml_selected_features_proxy := proxy_measures$n_selected]
@@ -130,7 +139,9 @@ TunerIAMLEANEW = R6Class("TunerIAMLEANEW",
         inst$archive$data[j, iaml_selected_non_monotone_proxy := proxy_measures$n_non_monotone]
 
         # update the iaml point (x space)
-        iaml_point = inst$archive$data[j, ][["iaml"]][[1L]]
+        iaml_point = inst$archive$data[j, ][["iaml"]][[1L]]$clone(deep = TRUE)
+        iaml_point_orig = iaml_point$clone(deep = TRUE)
+        inst$archive$data[j, iaml_orig := list(iaml_point_orig)]
         iaml_point = update_sIm(iaml_point, used = proxy_measures$used, belonging = proxy_measures$belonging)
 
         inst$archive$data[j, ][["iaml"]][[1L]] = iaml_point
@@ -139,7 +150,15 @@ TunerIAMLEANEW = R6Class("TunerIAMLEANEW",
         inst$archive$data[j, ][[monotone_id]][[1L]] = iaml_point$create_monotonicity_constraints()
       }
 
+      # iaml_points in the population with zero selection are killed
+      zero_selected = map_lgl(inst$archive$data[[select_id]], function(selector) get_number_of_selected_features_from_selector(selector, task = task) == 0L)
+      inst$archive$data[zero_selected, status := "dead"]
+
       repeat {  # iterate until we have an exception from eval_batch
+
+        zero_selected = map_lgl(inst$archive$data[[select_id]], function(selector) get_number_of_selected_features_from_selector(selector, task = task) == 0L)
+        stopifnot(all(inst$archive$data[zero_selected, ][["status"]] == "dead"))
+
         # new gen, new nadir point, new individuals that are still alive
         gen = gen + 1
         data = inst$archive$data[, inst$archive$cols_y, with = FALSE]
@@ -150,7 +169,8 @@ TunerIAMLEANEW = R6Class("TunerIAMLEANEW",
 
         # create children
         # binary tournament selection of parents
-        children = map_dtr(seq_len(ceiling(mu / 2)), function(i) {
+        # FIXME: if alive ids is < 1 (due to zero selection being killed) simply generate children at random but this is unlikely to happen
+        children = map_dtr(seq_len(ceiling(lambda / 2)), function(i) {
           parent_id1 = binary_tournament(ys, alive_ids, nadir)
           parent_id2 = binary_tournament(ys, alive_ids, nadir)
           parents = transpose_list(copy(inst$archive$data[c(parent_id1, parent_id2), c("iaml", inst$archive$cols_x), with = FALSE]))
@@ -159,11 +179,11 @@ TunerIAMLEANEW = R6Class("TunerIAMLEANEW",
           # Gaussian or uniform discrete mutation for HPs
           for (j in 1:2) {
             for(param_id in param_ids) {
-              parents[[j]][[param_id]] = mutate(parents[[j]][[param_id]], param = param_space$params[[param_id]], sdx = sds[[param_id]])
+              parents[[j]][[param_id]] = mutate(parents[[j]][[param_id]], param = param_space$params[[param_id]], range = ranges[[param_id]])
             }
           }
           # Uniform crossover for HPS; p could be individual for each HP
-          p_param_space_cross = 0.2  # FIXME: HP
+          p_param_space_cross = 0.2  # FIXME: HP of Tuner
           crossover_ps = runif(length(param_ids), min = 0, max = 1)
           param_ids_to_cross = param_ids[which(crossover_ps <= p_param_space_cross)]
           tmp = parents[[1L]]
@@ -198,13 +218,14 @@ TunerIAMLEANEW = R6Class("TunerIAMLEANEW",
           as.data.table(transpose_list(parents))
         })
         children[, generation := gen]
-        children = children[seq_len(mu), ]  # restrict to mu children
-       
+        children = children[seq_len(lambda), ]  # restrict to lambda children
+
         # evaluate children 
         for (i in seq_len(nrow(children))) {
           inst$eval_batch(children[i, ])
-
+          # NOTE: cannot use i but we can use inst$archive$n_batch (due to synchronous evaluation)
           j = inst$archive$n_batch
+
           # actually evaluate the proxy measures
           # learner_for_measures and orig_pvs have been defined above (eval of initial pop)
           proxy_measures = calculate_proxy_measures(learner_for_measures, task = task, orig_pvs = orig_pvs, xdt = inst$archive$data[j, inst$archive$cols_x, with = FALSE], search_space = inst$search_space)
@@ -213,40 +234,53 @@ TunerIAMLEANEW = R6Class("TunerIAMLEANEW",
           inst$archive$data[j, iaml_selected_non_monotone_proxy := proxy_measures$n_non_monotone]
 
           # update the iaml point (x space)
-          iaml_point = inst$archive$data[j, ][["iaml"]][[1L]]
+          iaml_point = inst$archive$data[j, ][["iaml"]][[1L]]$clone(deep = TRUE)
+          iaml_point_orig = iaml_point$clone(deep = TRUE)
+          inst$archive$data[j, iaml_orig := list(iaml_point_orig)]
           iaml_point = update_sIm(iaml_point, used = proxy_measures$used, belonging = proxy_measures$belonging)
 
           inst$archive$data[j, ][["iaml"]][[1L]] = iaml_point
           inst$archive$data[j, ][[select_id]][[1L]] = iaml_point$create_selector()
           inst$archive$data[j, ][[interaction_id]][[1L]] = iaml_point$create_interaction_constraints()
           inst$archive$data[j, ][[monotone_id]][[1L]] = iaml_point$create_monotonicity_constraints()
-
         }
 
         # NSGA-II stuff for survival
-        # could do this only based on gen and gen - 1L
-        ys = t(t(inst$archive$data[, inst$archive$cols_y, with = FALSE]) * mult_max_to_min(inst$objective$codomain))
-        rankings = emoa::nds_rank(t(ys))  # non-dominated fronts
-        cds = map_dtr(unique(rankings), function(ranking) {  # crowding distances
-          ids = which(rankings == ranking)
-          data.table(id = ids, cd = emoa::crowding_distance(t(ys[ids, ])))
-        })
-        setorderv(cds, "id")
-        alive_ids = integer(mu)
-        current_front = 0L
-        while(sum(alive_ids == 0L) != 0L) {
-          current_front = current_front + 1L
-          candidate_ids = which(rankings == current_front)
-          to_insert = sum(alive_ids == 0L)
-          if (length(candidate_ids) <= to_insert) {
-            alive_ids[alive_ids == 0][seq_along(candidate_ids)] = candidate_ids
-          } else {
-            alive_ids[alive_ids == 0] = candidate_ids[order(cds[candidate_ids, ]$cd)][seq_len(to_insert)]
-          }
+        all_ids = seq_len(nrow(inst$archive$data))
+        # iaml_points with zero selection are not allowed to be selected
+        zero_selected = map_lgl(inst$archive$data[[select_id]], function(selector) get_number_of_selected_features_from_selector(selector, task = task) == 0L)
+        considered_ids = all_ids[!zero_selected]
+        if (length(considered_ids) <= mu) {
+          inst$archive$data[, status := "dead"]
+          inst$archive$data[considered_ids, status := "alive"]
+        } else {
+          ys = t(t(inst$archive$data[!zero_selected, inst$archive$cols_y, with = FALSE]) * mult_max_to_min(inst$objective$codomain))
+          alive_ids = emoa::nds_cd_selection(t(ys), n = mu)
+          #rankings = emoa::nds_rank(t(ys))  # non-dominated fronts
+          #cds = map_dtr(unique(rankings), function(ranking) {  # crowding distances
+          #  ids = which(rankings == ranking)
+          #  data.table(id = ids, cd = emoa::crowding_distance(t(ys[ids, , drop = FALSE])))
+          #})
+          #setorderv(cds, "id")
+          #stopifnot(setequal(cds$id, seq_len(nrow(cds))))
+          #alive_ids = integer(mu)
+          #current_front = 0L
+          #used_ids = integer()
+          #while(sum(alive_ids == 0L) != 0) {
+          #  current_front = current_front + 1L
+          #  candidate_ids = which(rankings == current_front)
+          #  to_insert = sum(alive_ids == 0L)
+          #  if (length(candidate_ids) <= to_insert) {
+          #    alive_ids[alive_ids == 0][seq_along(candidate_ids)] = candidate_ids
+          #  } else {
+          #    alive_ids[alive_ids == 0] = candidate_ids[order(cds[candidate_ids, ]$cd)][seq_len(to_insert)]
+          #  }
+          #}
+          stopifnot(length(unique(alive_ids)) == length(alive_ids))
+          inst$archive$data[, status := "dead"]
+          inst$archive$data[considered_ids[alive_ids], status := "alive"]  # alive_ids was determined on the ys that did not carry the considered_ids info
+
         }
-        stopifnot(length(unique(alive_ids)) == length(alive_ids))
-        inst$archive$data[, status := "dead"]
-        inst$archive$data[alive_ids, status := "alive"]
       }
 
       inst
@@ -254,18 +288,16 @@ TunerIAMLEANEW = R6Class("TunerIAMLEANEW",
   )
 )
 
+# FIXME: anneal sigma over time?
 # mutation function for normal parameters
-mutate = function(value, param, sdx) {
-  # FIXME: log scale
-  # FIXME: p, sigma HPs of Tuner; p could be individual for each HP
-  p = 0.2
-  sigma = 1
+mutate = function(value, param, range, p = 0.2, sigma = 0.1) {
+  # FIXME: p and sigma HPs of Tuner; could be individual for each HP
   stopifnot(param$class %in% c("ParamDbl", "ParamFct", "ParamInt", "ParamLgl"))
   if (runif(1L, min = 0, max = 1) >= p) {
     return(value)  # early exit
   }
   if (param$class %in% c("ParamDbl", "ParamInt")) {
-    value = value + rnorm(1L, mean = 0, sd = sigma * sdx)
+    value = rnorm(1L, mean = value, sd = sigma * range)
     if (param$class == "ParamInt") {
       value = round(value, 0L)
     }

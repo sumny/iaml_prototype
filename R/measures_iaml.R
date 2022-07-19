@@ -179,33 +179,30 @@ MeasureIAMLSelectedFeatures = R6Class("MeasureIAMLSelectedFeatures",
 
   private = list(
     .score = function(prediction, task, learner, ...) {
-      # FIXME: bug in mlr3? learner param set is not pertained correctly, therefore values are always the same, therefore fix this in Tuners for now
       n_selected = attr(learner$param_set$values[[self$param_set$values$select_id]], "n_selected")
       n_selected_total = attr(learner$param_set$values[[self$param_set$values$select_id]], "n_selected_total")
 
-      # FIXME: log if tryCatch fails!
       if (self$param_set$values$actually_used) {
-        # FIXME: check this
         learner_ = learner$clone(deep = TRUE)
         learner_$train(task)
         xgb_model_name = self$param_set$values$learner_id
         if (xgb_model_name == "NULL") {  # hacky due to default xgb
           features = learner_$model$feature_names
-          n_selected_total = length(features)
-          tmp = tryCatch(xgb_model_dt_tree(features, learner_$model),
-            error = function(ec) {
-              browser()
-              data.table()
-            })
+          n_selected_total = length(task$feature_names)
+          tmp = tryCatch(xgb_model_dt_tree(features, learner_$model), error = function(ec) {
+            NULL
+          })
         } else {
           features = learner_$model[[xgb_model_name]]$model$feature_names
-          tmp = tryCatch(xgb_model_dt_tree(features, learner_$model[[xgb_model_name]]$model),
-            error = function(ec) {
-              browser()
-              data.table()
-            })
+          tmp = tryCatch(xgb_model_dt_tree(features, learner_$model[[xgb_model_name]]$model), error = function(ec) {
+            NULL
+          })
         }
-        used = unique(tmp$Feature[tmp$Feature != "Leaf"])
+        used = if (is.null(tmp)) {
+          features
+        } else {
+          sort(unique(tmp$Feature[tmp$Feature != "Leaf"]))
+        }
         n_a_selected = length(used)
         attr(n_a_selected, "n_selected") = n_selected
         attr(n_a_selected, "used") = used
@@ -279,40 +276,39 @@ MeasureIAMLSelectedInteractions = R6Class("MeasureIAMLSelectedInteractions",
 
   private = list(
     .score = function(prediction, task, learner, ...) {
-      # FIXME: bug in mlr3? learner param set is not pertained correctly, therefore values are always the same, therefore fix this in Tuners for now
       n_interactions = attr(learner$param_set$values[[self$param_set$values$interaction_id]], "n_interactions")
       n_interactions_total = attr(learner$param_set$values[[self$param_set$values$interaction_id]], "n_interactions_total")
 
-      # FIXME: log if tryCatch fails!
       if (self$param_set$values$actually_used) {
         learner_ = learner$clone(deep = TRUE)
         learner_$train(task)
-        # FIXME: check this
         xgb_model_name = self$param_set$values$learner_id
         if (xgb_model_name == "NULL") {  # hacky due to default xgb
           features = learner_$model$feature_names
-          n_selected_total = length(features)
-          n_interactions_total = (n_selected_total * (n_selected_total - 1)) / 2
+          n_selected_total = length(task$feature_names)
+          n_interactions_total = (n_selected_total * (n_selected_total - 1L)) / 2L
           pairs = tryCatch(interactions(learner_$model, option = "pairs"), error = function(ec) {
-              browser()
-              data.table()
-            })
+            NULL
+          })
         } else {
           features = learner_$model[[xgb_model_name]]$model$feature_names
           pairs = tryCatch(interactions(learner_$model[[xgb_model_name]]$model, option = "pairs"), error = function(ec) {
-              browser()
-              data.table()
-            })
+            NULL
+          })
         }
-        tmp = get_actual_interactions(features, pairs)
-        n_a_interactions = tmp$n_interactions
+        if (is.null(pairs)) {
+          n_a_interactions = n_interactions_total
+        } else {
+          tmp = get_actual_interactions(features, pairs)
+          n_a_interactions = tmp$n_interactions
+        }
         attr(n_a_interactions, "n_interactions") = n_interactions
-        attr(n_a_interactions, "I") = tmp$I  # FIXME: not transitively closed
+        attr(n_a_interactions, "I") = tmp$I
         n_interactions = n_a_interactions
       }
 
       if (self$param_set$values$normalize) {
-        n_interactions = n_interactions / n_interactions_total  # FIXME: do we scale by all or only all based on actual selected features
+        n_interactions = n_interactions / n_interactions_total
         if (n_interactions_total == 0) {
           n_interactions = 0
         }
@@ -322,26 +318,6 @@ MeasureIAMLSelectedInteractions = R6Class("MeasureIAMLSelectedInteractions",
     }
   )
 )
-
-get_actual_interactions = function(features, pairs) {
-  I = matrix(0L, nrow = length(features), ncol = length(features))
-  for (f1 in unique(c(pairs$Parent, pairs$Child))) {
-    tmp = pairs[Parent == f1 | Child == f1]
-    interactors = unique(c(tmp$Parent, tmp$Child))
-    i = match(f1, features)
-    js = match(interactors, features)
-    I[i, js] = 1L
-    I[js, i] = 1L
-  }
-  diag(I) = 1L
-  rel = transitive_closure(relation(features, incidence = I))
-  I = rel$.Data$incidence
-  colnames(I) = rownames(I) = features
-  belonging = relation_class_ids(rel)
-  # FIXME: below
-  # Note: I must not be transitive; but we do consider the transitive closure
-  list(n_interactions = sum(I[upper.tri(I)]), I = I, belonging = belonging)
-}
 
 #' @title IAML Selected Non Monotone Features Measure
 #'
@@ -400,25 +376,24 @@ MeasureIAMLSelectedNonMonotone = R6Class("MeasureIAMLSelectedNonMonotone",
 
   private = list(
     .score = function(prediction, task, learner, ...) {
-      # FIXME: bug in mlr3? learner param set is not pertained correctly, therefore values are always the same, therefore fix this in Tuners for now
       n_non_monotone = attr(learner$param_set$values[[self$param_set$values$monotone_id]], "n_non_monotone")
       n_non_monotone_total = attr(learner$param_set$values[[self$param_set$values$monotone_id]], "n_non_monotone_total")
 
-      # FIXME: log if tryCatch fails!
       if (self$param_set$values$actually_used) {
-        # FIXME: check this
         learner_ = learner$clone(deep = TRUE)
         learner_$train(task)
         xgb_model_name = self$param_set$values$learner_id
         if (xgb_model_name == "NULL") {  # hacky due to default xgb
           features = learner_$model$feature_names
-          n_non_monotone_total = length(features)
-          tmp = tryCatch(xgb_model_dt_tree(features, learner_$model),
-            error = function(ec) {
-              browser()
-              data.table()
-            })
-          used = unique(tmp$Feature[tmp$Feature != "Leaf"])
+          n_non_monotone_total = length(task$feature_names)
+          tmp = tryCatch(xgb_model_dt_tree(features, learner_$model), error = function(ec) {
+            NULL
+          })
+          used = if (is.null(tmp)) {
+            features
+          } else {
+            sort(unique(tmp$Feature[tmp$Feature != "Leaf"]))
+          }
           a_non_monotone = rep(0, length(used))
           names(a_non_monotone) = used
           n_a_non_monotone = sum(a_non_monotone == 0)
@@ -426,14 +401,15 @@ MeasureIAMLSelectedNonMonotone = R6Class("MeasureIAMLSelectedNonMonotone",
           attr(n_a_non_monotone, "a_non_monotone") = a_non_monotone
           n_non_monotone = n_a_non_monotone
         } else {
-          # FIXME: debug and check: selected_features must be >= selected_non_monotone
           features = learner_$model[[xgb_model_name]]$model$feature_names
-          tmp = tryCatch(xgb_model_dt_tree(features, learner_$model[[xgb_model_name]]$model),
-            error = function(ec) {
-              browser()
-              data.table()
-            })
-          used = unique(tmp$Feature[tmp$Feature != "Leaf"])
+          tmp = tryCatch(xgb_model_dt_tree(features, learner_$model[[xgb_model_name]]$model), error = function(ec) {
+            NULL
+          })
+          used = if (is.null(tmp)) {
+            features
+          } else {
+            sort(unique(tmp$Feature[tmp$Feature != "Leaf"]))
+          }
           a_non_monotone = learner_$param_set$values[[self$param_set$values$monotone_id]]
           a_non_monotone = a_non_monotone[names(a_non_monotone) %in% used]
           n_a_non_monotone = sum(a_non_monotone == 0)

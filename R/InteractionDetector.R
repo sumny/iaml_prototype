@@ -1,5 +1,4 @@
 # Accurate Intelligible Models with Pairwise Interactions - Lou et al. 2013
-
 # we assume integer or numeric features due to later using xgboost
 # logicals must be converted to integers
 # FIXME: check this and maybe use implementation from EBM
@@ -64,23 +63,18 @@ InteractionDetector = R6Class("InteractionDetector",
       top_rss = sort(rss[upper.tri(rss)])[seq_len(k)]
       top_interactions = unlist(map(top_rss, function(x) asplit(which(rss == x, arr.ind = TRUE), MARGIN = 1L)), recursive = FALSE)
       relation_matrix = matrix(0, nrow = n_features, ncol = n_features)
-      colnames(relation_matrix) = rownames(relation_matrix) = seq_len(n_features)
+      colnames(relation_matrix) = rownames(relation_matrix) = features
       for (interaction in top_interactions) {
         relation_matrix[interaction[1L], interaction[2L]] = 1
         relation_matrix[interaction[2L], interaction[1L]] = 1  # make symmetric
       }
       diag(relation_matrix) = 1  # make reflexive
-      relation = relation(list(seq_len(n_features), seq_len(n_features)), incidence = relation_matrix)
+      relation = relation(list(features, features), incidence = relation_matrix)
       relation = transitive_closure(relation)  # make transitive
-      belonging = relation_class_ids(relation)
+      belonging = get_class_ids_from_incidence(relation_incidence(relation)[features, features, drop = FALSE])
       belonging
     }
-  ),
-
-  #active = list(
-  #),
-  #private = list(
-  #)
+  )
 )
 
 # CH_i^t(v) if lower.tail else \bar{CH}_i^t 

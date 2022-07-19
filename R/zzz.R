@@ -41,6 +41,10 @@
   x$add("iml_interaction_strength", function() MeasureIMLIAS$new())
   x$add("iml_main_effect_complexity", function() MeasureIMLMEC$new())
 
+  # add sortfeatures to pipelines dictionary
+  x = utils::getFromNamespace("mlr_pipeops", ns = "mlr3pipelines")
+  x$add("sortfeatures", PipeOpSortFeatures)
+
   # setup logger
   assign("lg", lgr::get_logger("bbotk"), envir = parent.env(environment()))
 

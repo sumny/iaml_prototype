@@ -55,9 +55,10 @@ ID of param in Learner that selects features.}
 ID of param in Learner that sets interaction constraints.}
 \item{\code{monotone_id}}{\code{character(1)}\cr
 ID of param in Learner that sets monotonicity constraints.}
-\item{\code{batch_size}}{\code{integer(1)}\cr
-Maximum number of points to try in a batch.}
-}
+\item{\code{mu}}{\code{integer(1)}\cr
+Population size.}
+\item{\code{lambda}}{\code{integer(1)}\cr
+Offspring size of each generation.}}
 }
 
 \section{Progress Bars}{

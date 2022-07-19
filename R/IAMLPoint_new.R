@@ -1,15 +1,15 @@
-# ideen:
-# eqcs Gruppen der groesse absteigend nach sortieren so werden beim crossover dann eher gleich grosse gruppen eingecrosst
-# shuffle groups
+# ideas: shuffle groups
 IAMLPointNEW = R6Class("IAMLPoint",
   public = list(
-    initialize = function(task, n_selected = NULL, scores = NULL, interaction_detector = NULL, unconstrained = FALSE) {
+    initialize = function(task, n_selected = NULL, scores = NULL, interaction_detector = NULL, unconstrained_weight_table = NULL, n_interactions_prob = NULL, unconstrained = FALSE) {
+      self$allow_all_unselected = FALSE  # default at least two groups (unselected and one selected)
       # checks and feature names
       assert_task(task, feature_types = c("integer", "numeric"))
       assert_int(n_selected, lower = 1L, upper = nrow(task$feature_types), null.ok = TRUE)
       assert_data_table(scores, null.ok = TRUE)
       assert_r6(interaction_detector, classes = "InteractionDetector", null.ok = TRUE)
-      feature_names = task$feature_names
+      assert_data_table(unconstrained_weight_table, null.ok = TRUE)
+      feature_names = sort(task$feature_names)  # NOTE: we assume that features in the task will be sorted alphabetically prior to training, e.g., via PipeOpSortFeatures
       n_features = length(feature_names)
       self$feature_names = feature_names
 
@@ -28,7 +28,11 @@ IAMLPointNEW = R6Class("IAMLPoint",
         if (n_selected == 1L) {
           eqcs = list(features = selected_features, eqcs = 1L, belonging = 1L)
         } else {
-          k = sample(seq_len((n_selected * (n_selected - 1L)) / 2L), size = 1L)
+          task_selected = task$clone(deep = TRUE)
+          task_selected$col_roles$feature = selected_features
+          n_interactions_prob = 1 / get_n_interactions_rpart(task_selected)
+          k = sample_from_truncated_geom(n_interactions_prob, lower = 1L, upper = (n_selected * (n_selected - 1L)) / 2L)  # number of pairwise interactions sampled from truncated geometric distribution
+
           belonging = interaction_detector$get_eqcs_from_top_k(k = k, features = selected_features)
           belonging = match(belonging, sort(unique(belonging)))  # make eqcs start at 1
 
@@ -39,8 +43,17 @@ IAMLPointNEW = R6Class("IAMLPoint",
         # create group structure (including the first group being unselected)
         self$groups = self$get_full_group_structure(eqcs, unselected_features = setdiff(feature_names, selected_features))
 
-        # randomly sample monotonicity constraints of partitions
-        monotone_eqcs = c(NA_integer_, sample(c(0L, 1L), size = length(self$groups$eqcs) - 1L, replace = TRUE))  # first one is the not selected group
+        # randomly sample monotonicity constraints of partitions using weights from unconstrained_weight_table
+        # base probabilities are 0.2 for constrained, 0.8 for unconstrained
+        group_weights = map_dbl(get_eqcs(self$groups)[-1L], function(group) {  # excluding the unselected group
+          weights = unconstrained_weight_table[match(group, feature_name), unconstrained_weight]
+          mean(weights)
+        })
+        stopifnot(length(group_weights) == (length(self$groups$eqcs) - 1L))
+        monotone_eqcs = map_int(group_weights, function(group_weight) {
+          sample(c(0L, 1L), size = 1L, prob = c(group_weight, 1 - group_weight))
+        })
+        monotone_eqcs = c(NA_integer_, monotone_eqcs)  # first one is the unselected group
         self$monotone_eqcs = data.table(eqcs = self$groups$eqcs, monotonicity = monotone_eqcs)
       }
     },
@@ -54,7 +67,7 @@ IAMLPointNEW = R6Class("IAMLPoint",
     },
 
     get_matrix = function() {
-      x = self$get_groups()[-1L]  # first one is the not selected
+      x = self$get_groups()[-1L]  # first one is the unselected
 
       features = unique(unlist(x))
       stopifnot(setequal(features, self$selected_features))
@@ -76,7 +89,6 @@ IAMLPointNEW = R6Class("IAMLPoint",
 
     create_selector = function() {
       s = selector_name(self$selected_features)
-      # FIXME:
       attr(s, "n_selected") = self$n_selected
       attr(s, "n_selected_total") = self$n_features
       s
@@ -87,9 +99,8 @@ IAMLPointNEW = R6Class("IAMLPoint",
       interaction_constraints = I$classes
       n_interactions = sum(I$I[upper.tri(I$I)])
       stopifnot(nrow(I$I) == self$n_selected)  # I is only dim n_selected x n_selected
-      n_interactions_total = self$n_selected * (self$n_selected - 1L) / 2L  # number of elements of upper tri without diag
+      n_interactions_total = self$n_features * (self$n_features - 1L) / 2L  # number of elements of upper tri without diag, but for all features
       interaction_constraints = map(interaction_constraints, function(x) x - 1L)  # must start at 0
-      # FIXME:
       attr(interaction_constraints, "n_interactions") = n_interactions
       attr(interaction_constraints, "n_interactions_total") = n_interactions_total
       interaction_constraints
@@ -100,8 +111,7 @@ IAMLPointNEW = R6Class("IAMLPoint",
       stopifnot(setequal(monotone_features$feature, self$selected_features))
       monotonicity_constraints = setNames(monotone_features[["monotonicity"]], nm = monotone_features[["feature"]])[self$selected_features]
       n_non_monotone = sum(monotonicity_constraints == 0)
-      n_non_monotone_total = length(monotonicity_constraints)
-      # FIXME:
+      n_non_monotone_total = self$n_features
       attr(monotonicity_constraints, "n_non_monotone") = n_non_monotone
       attr(monotonicity_constraints, "n_non_monotone_total") = n_non_monotone_total
       monotonicity_constraints
@@ -254,7 +264,6 @@ IAMLPointNEW = R6Class("IAMLPoint",
 
     # function to get crossing sections for grouped GA crossover below
     get_crossing_sections = function(parent2) {
-      # FIXME: what if unselected group is empty, check this
       # parent1 is self$groups
       # parent2 is $groups of another IAMLPoint
       parent1 = self$groups
@@ -294,9 +303,11 @@ IAMLPointNEW = R6Class("IAMLPoint",
         assert_list(rhs, len = 3L, types = c("character", "integer", "integer"), any.missing = FALSE, names = "named")
         assert_true(all(names(rhs) == c("features", "eqcs", "belonging")))
         assert_set_equal(rhs[["features"]], self$feature_names)
-        # there must be at least 2 groups: the not selected one and at least one selected
+        # normally there must be at least 2 groups: the unselected one and one selected
         # upper is p + 1 because we may have the empty unselected group + each feature being in its own
-        assert_integer(rhs[["eqcs"]], lower = 1L, upper = length(self$feature_names) + 1L, any.missing = FALSE, min.len = 2L, unique = TRUE)
+        # if self$.allow_all_unselected = TRUE, all can be unselected
+        min_len = if (self$allow_all_unselected) 1L else 2L
+        assert_integer(rhs[["eqcs"]], lower = 1L, upper = length(self$feature_names) + 1L, any.missing = FALSE, min.len = min_len, unique = TRUE)
         assert_true(all(rhs[["belonging"]] %in% rhs[["eqcs"]]))
         private$.groups = rhs
       } else {
@@ -307,18 +318,30 @@ IAMLPointNEW = R6Class("IAMLPoint",
       if (!missing(rhs)) {
         assert_data_table(rhs, min.rows = 1L, max.rows = length(self$feature_names) + 1L, types = "integer")
         assert_true(rhs[1L, ][["eqcs"]] == 1L && is.na(rhs[1L, ][["monotonicity"]]))
-        assert_integer(rhs[["eqcs"]], lower = 1L, upper = length(self$feature_names) + 1L, any.missing = FALSE, min.len = 2L, unique = TRUE)
+        # normally there must be at least 2 groups: the unselected one and one selected
+        # upper is p + 1 because we may have the empty unselected group + each feature being in its own
+        # if self$.allow_all_unselected = TRUE, all can be unselected
+        min_len = if (self$allow_all_unselected) 1L else 2L
+        assert_integer(rhs[["eqcs"]], lower = 1L, upper = length(self$feature_names) + 1L, any.missing = FALSE, min.len = min_len, unique = TRUE)
         assert_true(all(rhs[["eqcs"]] == seq_len(nrow(rhs))))
         assert_integer(rhs[["monotonicity"]], lower = 0L, upper = 1L)
         private$.monotone_eqcs = rhs
       } else {
         private$.monotone_eqcs
       }
+    },
+    allow_all_unselected = function(rhs) {
+      if (!missing(rhs)) {
+        private$.allow_all_unselected = assert_flag(rhs)
+      } else {
+        private$.allow_all_unselected
+      }
     }
   ),
   private = list(
     .groups = NULL,
-    .monotone_eqcs = NULL
+    .monotone_eqcs = NULL,
+    .allow_all_unselected = NULL
   )
 )
 

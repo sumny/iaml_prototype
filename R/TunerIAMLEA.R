@@ -68,8 +68,9 @@ TunerIAMLEA = R6Class("TunerIAMLEA",
       param_space = ParamSet$new(inst$search_space$params[param_ids])
       param_space$trafo = inst$search_space$trafo
       param_space$deps = inst$search_space$deps
-      sds = map(names(which(param_space$is_number)), function(param_id_number) (1 / 12) * (param_space$params[[param_id_number]]$upper - param_space$params[[param_id_number]]$lower) ^ 2)  # FIXME: log scale
-      names(sds) = names(which(param_space$is_number))
+      # get ranges of numeric params for mutation
+      ranges = map(names(which(param_space$is_number)), function(param_id_number) param_space$params[[param_id_number]]$upper - param_space$params[[param_id_number]]$lower)
+      names(ranges) = names(which(param_space$is_number))
 
       task = inst$objective$task
 
@@ -135,7 +136,7 @@ TunerIAMLEA = R6Class("TunerIAMLEA",
           # Gaussian or uniform discrete mutation for HPs
           for (j in 1:2) {
             for(param_id in param_ids) {
-              parents[[j]][[param_id]] = mutate(parents[[j]][[param_id]], param = param_space$params[[param_id]], sdx = sds[[param_id]])
+              parents[[j]][[param_id]] = mutate(parents[[j]][[param_id]], param = param_space$params[[param_id]], range = ranges[[param_id]])
             }
           }
           # Uniform crossover for HPS; p could be individual for each HP
@@ -210,31 +211,4 @@ TunerIAMLEA = R6Class("TunerIAMLEA",
     }
   )
 )
-
-mutate = function(value, param, sdx) {
-  # FIXME: log scale
-  # FIXME: p, sigma HPs of Tuner; p could be individual for each HP
-  p = 0.2
-  sigma = 1
-  stopifnot(param$class %in% c("ParamDbl", "ParamFct", "ParamInt", "ParamLgl"))
-  if (runif(1L, min = 0, max = 1) >= p) {
-    return(value)  # early exit
-  }
-  if (param$class %in% c("ParamDbl", "ParamInt")) {
-    value = value + rnorm(1L, mean = 0, sd = sigma * sdx)
-    if (param$class == "ParamInt") {
-      value = round(value, 0L)
-    }
-    value = min(max(value, param$lower), param$upper)
-  } else if (param$class %in% c("ParamFct", "ParamLgl")) {
-    value = sample(param$levels, size = 1L)
-  }
-  value
-}
-
-binary_tournament = function(ys, alive_ids, nadir) {
-  ids = sample(alive_ids, size = 2L, replace = FALSE)
-  ys_ids = ys[ids, ]
-  ids[emoa::nds_cd_selection(t(ys_ids), n = 1L)]
-}
 

@@ -1,5 +1,4 @@
 # Monotonicity Detection via AIC comparison of monotone restricted splines - scam
-
 # we assume integer or numeric features due to later using xgboost
 # logicals must be converted to integers
 MonotonicityDetector = R6Class("MonotonicityDetectorDetector",
@@ -21,6 +20,7 @@ MonotonicityDetector = R6Class("MonotonicityDetectorDetector",
       self$feature_types = feature_types
       self$y_name = task$target_names
       self$aic_table = data.table(feature_name = feature_names, aic_increasing = numeric(n_features), aic_decreasing = numeric(n_features))
+      self$unconstrained_weight_table = data.table(feature_name = feature_names, unconstrained_weight = numeric(n_features))
     },
 
     task = NULL,
@@ -31,6 +31,7 @@ MonotonicityDetector = R6Class("MonotonicityDetectorDetector",
     feature_types = NULL,
     y_name = NULL,
     aic_table = NULL,
+    unconstrained_weight_table = NULL,
 
     compute_aics = function() {
       pb = progress_bar$new(format = "Fitting scams [:bar] :percent eta: :eta", total = length(self$feature_names))
@@ -50,13 +51,10 @@ MonotonicityDetector = R6Class("MonotonicityDetectorDetector",
       }
     },
 
-    get_unconstrained_weight = function(feature_name) {
-      x_name = assert_choice(feature_name, choices = self$feature_names)
-      aics = self$aic_table[feature_name == x_name, c("aic", "aic_increasing", "aic_decreasing")]
-      sign = self$get_sign(x_name)
-      aic = aics[["aic"]]
-      aic_constrained = if (sign == 1L) aics[["aic_increasing"]] else if (sign == -1L) aics[["aic_decreasing"]]
-      1 - min(1, max(0, (aic / aic_constrained))) # relative change in aic when moving from constrained to unconstrained; the larger the better; this is used for the sampling of monotonicity attributes
+    compute_unconstrained_weights = function() {
+      for (x_name in self$feature_names) {
+        private$.compute_unconstrained_weight(x_name)
+      }
     }
   ),
 
@@ -64,17 +62,36 @@ MonotonicityDetector = R6Class("MonotonicityDetectorDetector",
   #),
   private = list(
     .compute_aic = function(x_name) {
-      control = scam.control(maxit = 100L, devtol.fit = 1e-5, steptol.fit = 1e-5)
+      control = scam.control(maxit = 10L, devtol.fit = 1e-4, steptol.fit = 1e-4)  # quite permissive fitting parameters; we do not need to be that precise
       fam = if (self$classification) binomial() else gaussian()
       form = as.formula(paste0(self$y_name, " ~ ", "s(", x_name, ")"))
-      s = scam(formula = form, family = fam, data = self$data, control = control)
+      s = tryCatch(scam(formula = form, family = fam, data = self$data, control = control), error = function(ec) NULL)
       form_inc = as.formula(paste0(self$y_name, " ~ ", "s(", x_name, ", bs = 'mpi')"))
-      s_inc = scam(formula = form_inc, family = fam, data = self$data, control = control)
+      s_inc = tryCatch(scam(formula = form_inc, family = fam, data = self$data, control = control), error = function(ec) NULL)
       form_decr = as.formula(paste0(self$y_name, " ~ ", "s(", x_name, ", bs = 'mpd')"))
-      s_decr = scam(formula = form_decr, family = fam, data = self$data, control = control)
-      self$aic_table[feature_name == x_name, aic := AIC(s)]
-      self$aic_table[feature_name == x_name, aic_increasing := AIC(s_inc)]
-      self$aic_table[feature_name == x_name, aic_decreasing := AIC(s_decr)]
+      s_decr = tryCatch(scam(formula = form_decr, family = fam, data = self$data, control = control), error = function(ec) NULL)
+
+      aic_ = tryCatch(AIC(s), error = function(ec) Inf)
+      aic_increasing_ = tryCatch(AIC(s_inc), error = function(ec) Inf)
+      aic_decreasing_ = tryCatch(AIC(s_decr), error = function(ec) Inf)
+
+      self$aic_table[feature_name == x_name, aic := aic_]
+      self$aic_table[feature_name == x_name, aic_increasing := aic_increasing_]
+      self$aic_table[feature_name == x_name, aic_decreasing := aic_decreasing_]
+    },
+
+    .compute_unconstrained_weight = function(x_name) {
+      aics = self$aic_table[feature_name == x_name, c("aic", "aic_increasing", "aic_decreasing")]
+      sign = self$get_sign(x_name)
+      aic = aics[["aic"]]
+      aic_constrained = if (sign == 1L) aics[["aic_increasing"]] else if (sign == -1L) aics[["aic_decreasing"]]
+      # if aic_constrained == aic, sampling weight for unconstraint is set to at least 0.2 (custom lower bound)
+      delta = max(0, aic_constrained - aic)
+      p = (exp(- delta / 2))  # probability of constrained model minimizing aic Burnham & Anderson (2004)
+      p_adjusted = p * 0.8
+      tmp = 1 - p_adjusted  # sampling weight for unconstrained model
+      if (!is.finite(tmp) | is.nan(tmp)) tmp = 1  # if something goes wrong or models were not fit, opt for unconstrained model
+      self$unconstrained_weight_table[feature_name == x_name, unconstrained_weight := tmp]
     }
   )
 )
@@ -84,5 +101,8 @@ if (FALSE) {
   task = tsk("spam")
   detector = MonotonicityDetector$new(task)
   detector$compute_aics()
+  detector$aic_table
   detector$get_sign("address")
+  detector$compute_unconstrained_weights()
+  detector$unconstrained_weight_table
 }
