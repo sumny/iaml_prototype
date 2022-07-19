@@ -8,6 +8,7 @@ library(mlr3misc)
 library(mlr3tuning)
 library(mlr3mbo)
 library(paradox)
+library(bbotk)
 library(iaml)
 
 root = here::here()
@@ -26,6 +27,7 @@ eval_ = function(job, data, instance, ...) {
   library(mlr3tuning)
   library(mlr3mbo)
   library(paradox)
+  library(bbotk)
   library(iaml)
   # FIXME: EBmlr3
 

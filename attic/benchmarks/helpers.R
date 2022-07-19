@@ -157,7 +157,7 @@ nested_resampling_xgboost = function(task_train, task_test, resampling_inner, n_
   }
 
   n_non_monotone_total = n_selected_total
-  n_non_monotone = n_selected_total
+  n_non_monotone = n_selected
   n_non_monotone = n_non_monotone / n_non_monotone_total
 
   data.table(tuning_data = list(tuning_data), best = list(best), ce.test = ce, iaml_selected_features_proxy = n_selected, iaml_selected_interactions_proxy = n_interactions, iaml_selected_non_monotone_proxy = n_non_monotone)
@@ -298,7 +298,7 @@ random_forest = function(task_train, task_test, ...) {
   }
 
   n_non_monotone_total = n_selected_total
-  n_non_monotone = n_selected_total
+  n_non_monotone = n_selected
   n_non_monotone = n_non_monotone / n_non_monotone_total
 
   data.table(tuning_data = NULL, best = NULL, ce.test = ce, iaml_selected_features_proxy = n_selected, iaml_selected_interactions_proxy = n_interactions, iaml_selected_non_monotone_proxy = n_non_monotone)
