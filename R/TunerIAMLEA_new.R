@@ -70,7 +70,6 @@ TunerIAMLEANEW = R6Class("TunerIAMLEANEW",
       param_space$trafo = inst$search_space$trafo
       param_space$deps = inst$search_space$deps
       # get ranges of numeric params for mutation
-      # FIXME: what if on log
       ranges = map(names(which(param_space$is_number)), function(param_id_number) param_space$params[[param_id_number]]$upper - param_space$params[[param_id_number]]$lower)
       names(ranges) = names(which(param_space$is_number))
 
