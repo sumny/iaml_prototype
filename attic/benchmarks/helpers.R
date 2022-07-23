@@ -158,7 +158,7 @@ nested_resampling_xgboost = function(task_train, task_test, resampling_inner, n_
 
   n_non_monotone = n_selected
 
-  data.table(tuning_data = list(tuning_data), best = list(best), ce.test = ce, iaml_selected_features_proxy = n_selected, iaml_selected_interactions_proxy = n_interactions, iaml_selected_non_monotone_proxy = n_non_monotone)
+  data.table(tuning_data = list(tuning_data), best = list(best), ce_test = ce, iaml_selected_features_proxy = n_selected, iaml_selected_interactions_proxy = n_interactions, iaml_selected_non_monotone_proxy = n_non_monotone)
 }
 
 nested_resampling_ebm = function(task_train, task_test, resampling_inner, n_evals = 430L, secs = 5L * 24L * 3600L) {
@@ -203,7 +203,7 @@ nested_resampling_ebm = function(task_train, task_test, resampling_inner, n_eval
   learner_on_train$train(task_train)
   ce = learner_on_train$predict(task_test)$score(measure)
 
-  data.table(tuning_data = list(tuning_data), best = list(best), ce.test = ce, iaml_selected_features_proxy = n_features, iaml_selected_interactions_proxy = min(c(best$interactions, n_features * (n_features - 1L) / 2L)), iaml_selected_non_monotone_proxy = n_features)
+  data.table(tuning_data = list(tuning_data), best = list(best), ce_test = ce, iaml_selected_features_proxy = 1, iaml_selected_interactions_proxy = min(c(best$interactions, n_features * (n_features - 1L) / 2L)) / (n_features * (n_features - 1L) / 2L), iaml_selected_non_monotone_proxy = 1)
 }
 
 nested_resampling_glmnet = function(task_train, task_test, resampling_inner, n_evals = 430L, secs = 5L * 24L * 3600L) {
@@ -245,7 +245,7 @@ nested_resampling_glmnet = function(task_train, task_test, resampling_inner, n_e
   learner_on_train$train(task_train)
   ce = learner_on_train$predict(task_test)$score(measure)
 
-  data.table(tuning_data = list(tuning_data), best = list(best), ce.test = ce, iaml_selected_features_proxy = get_n_selected_glmnet(learner_on_train, task = task_train), iaml_selected_interactions_proxy = 0L, iaml_selected_non_monotone_proxy = 0L)
+  data.table(tuning_data = list(tuning_data), best = list(best), ce_test = ce, iaml_selected_features_proxy = get_n_selected_glmnet(learner_on_train, task = task_train), iaml_selected_interactions_proxy = 0L, iaml_selected_non_monotone_proxy = 0L)
 }
 
 random_forest = function(task_train, task_test, ...) {
@@ -297,7 +297,7 @@ random_forest = function(task_train, task_test, ...) {
 
   n_non_monotone = n_selected
 
-  data.table(tuning_data = NULL, best = NULL, ce.test = ce, iaml_selected_features_proxy = n_selected, iaml_selected_interactions_proxy = n_interactions, iaml_selected_non_monotone_proxy = n_non_monotone)
+  data.table(tuning_data = NULL, best = NULL, ce_test = ce, iaml_selected_features_proxy = n_selected, iaml_selected_interactions_proxy = n_interactions, iaml_selected_non_monotone_proxy = n_non_monotone)
 }
 
 get_n_selected_glmnet = function(learner, task, normalize = TRUE) {

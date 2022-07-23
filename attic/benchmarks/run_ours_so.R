@@ -27,6 +27,7 @@ eval_ = function(job, data, instance, ...) {
   library(paradox)
   library(bbotk)
   library(iaml)
+  library(data.table)
   # FIXME: EBmlr3
 
   data.table::setDTthreads(1L)
@@ -45,15 +46,15 @@ eval_ = function(job, data, instance, ...) {
   method = job$algo.pars$method
 
   results = if (method == "gagga") {
-    nested_resampling_gagga(task_train, task_test = task_test, resampling_inner = resampling_inner)
-  } else if (method == "xgb") {
-    nested_resampling_xgboost(task_train, task_test = task_test, resampling_inner = resampling_inner)
+    nested_resampling_gagga(task_train, task_test = task_test, resampling_inner = resampling_inner, n_evals = 230)
+  } else if (method == "xgboost") {
+    nested_resampling_xgboost(task_train, task_test = task_test, resampling_inner = resampling_inner, n_evals = 230)
   } else if (method == "ebm") {
     reticulate::use_condaenv("EBmlr3", required = TRUE)
     library(EBmlr3)
-    nested_resampling_ebm(task_train, task_test = task_test, resampling_inner = resampling_inner)
+    nested_resampling_ebm(task_train, task_test = task_test, resampling_inner = resampling_inner, n_evals = 230)
   } else if (method == "glmnet") {
-    nested_resampling_glmnet(task_train, task_test = task_test, resampling_inner = resampling_inner)
+    nested_resampling_glmnet(task_train, task_test = task_test, resampling_inner = resampling_inner, n_evals = 230)
   } else if (method == "rf") {
     random_forest(task_train, task_test = task_test)
   }
@@ -116,9 +117,11 @@ for (method in c("gagga", "xgboost", "ebm", "glmnet", "rf")) {
   addJobTags(ids, method)
 }
 
+# gagga, xgboost and ebm 32 GB ram on problem 4 64 gb
 # standard resources used to submit jobs to cluster
+# FIXME: use actual time needed
 resources.serial.default = list(
-  walltime = 3600L * 24L * 6L, memory = 1024L * 16L, max.concurrent.jobs = 9999L
+  walltime = 3600L * 24L * 6L, memory = 1024L * 64L, max.concurrent.jobs = 9999L
 )
 
 jobs = findJobs()
