@@ -175,12 +175,6 @@ TunerIAMLEANEW = R6Class("TunerIAMLEANEW",
           parents = transpose_list(copy(inst$archive$data[c(parent_id1, parent_id2), c("iaml", inst$archive$cols_x), with = FALSE]))
 
           # param_space
-          # Gaussian or uniform discrete mutation for HPs
-          for (j in 1:2) {
-            for(param_id in param_ids) {
-              parents[[j]][[param_id]] = mutate(parents[[j]][[param_id]], param = param_space$params[[param_id]], range = ranges[[param_id]])
-            }
-          }
           # Uniform crossover for HPS; p could be individual for each HP
           p_param_space_cross = 0.2  # FIXME: HP of Tuner
           crossover_ps = runif(length(param_ids), min = 0, max = 1)
@@ -190,19 +184,25 @@ TunerIAMLEANEW = R6Class("TunerIAMLEANEW",
             parents[[1L]][[param_id]] = parents[[2L]][[param_id]]
             parents[[2L]][[param_id]] = tmp[[param_id]]
           }
+          # Gaussian or uniform discrete mutation for HPs
+          for (j in 1:2) {
+            for(param_id in param_ids) {
+              parents[[j]][[param_id]] = mutate(parents[[j]][[param_id]], param = param_space$params[[param_id]], range = ranges[[param_id]])
+            }
+          }
 
           # sIm space
-          # mutation and crossover via GGA
+          # crossover and mutation via GGA
           iaml1 = parents[[1L]][["iaml"]]$clone(deep = TRUE)
           iaml2 = parents[[2L]][["iaml"]]$clone(deep = TRUE)
-
-          iaml1$mutate()
-          iaml2$mutate()
 
           crossing_sections = iaml1$get_crossing_sections(iaml2)
           tmp = iaml1$clone(deep = TRUE)
           iaml1$crossover(iaml2, crossing_sections = crossing_sections)
           iaml2$crossover(tmp, crossing_sections = rev(crossing_sections))
+
+          iaml1$mutate()
+          iaml2$mutate()
 
           parents[[1L]][["iaml"]] = iaml1
           parents[[1L]][[select_id]] = iaml1$create_selector()

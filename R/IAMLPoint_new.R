@@ -157,7 +157,7 @@ IAMLPointNEW = R6Class("IAMLPoint",
           belonging[change_belonging] = new_belonging
 
           # some older groups may now be unselected
-          group_lookup = group_lookup[groups %in% unique(c(1L, belonging)), ]  # it may happend that "1_1" is empty
+          group_lookup = group_lookup[groups %in% unique(c(1L, belonging)), ]  # it may happen that "1_1" is empty
           group_lookup[, reordered := seq_len(.N)]
 
           belonging = group_lookup$reordered[match(belonging, group_lookup$groups)]
@@ -166,7 +166,7 @@ IAMLPointNEW = R6Class("IAMLPoint",
 
           # update group attributes (monotonicity)
           orig_eqcs = group_lookup$groups[match(eqcs, group_lookup$reordered)]
-          monotone_eqcs = monotone_eqcs[match(unique(c(1L, orig_eqcs)), monotone_eqcs$eqcs), ]  # it may happend that "1_1" is empty
+          monotone_eqcs = monotone_eqcs[match(unique(c(1L, orig_eqcs)), monotone_eqcs$eqcs), ]  # it may happen that "1_1" is empty
           monotone_eqcs[, eqcs := group_lookup$reordered[match(monotone_eqcs$eqcs, group_lookup$groups)]]
           setorderv(monotone_eqcs, "eqcs")
           self$monotone_eqcs = monotone_eqcs
@@ -239,7 +239,7 @@ IAMLPointNEW = R6Class("IAMLPoint",
         }
 
         # some older groups may now be unselected
-        group_lookup = group_lookup[groups %in% unique(c("1_1", belonging)), ]  # it may happend that "1_1" is empty
+        group_lookup = group_lookup[groups %in% unique(c("1_1", belonging)), ]  # it may happen that "1_1" is empty
         group_lookup[, reordered := seq_len(.N)]
         stopifnot("1_1" %in% group_lookup$groups && group_lookup[groups == "1_1", ][["reordered"]] == 1)
 
@@ -250,7 +250,7 @@ IAMLPointNEW = R6Class("IAMLPoint",
         # update group attributes (monotonicity)
         orig_eqcs = group_lookup$groups[match(eqcs, group_lookup$reordered)]
         all_monotone_eqcs = rbind(parent1_monotone_eqcs, parent2_monotone_eqcs)
-        monotone_eqcs = all_monotone_eqcs[match(unique(c("1_1", orig_eqcs)), all_monotone_eqcs$eqcs), ]  # it may happend that "1_1" is empty
+        monotone_eqcs = all_monotone_eqcs[match(unique(c("1_1", orig_eqcs)), all_monotone_eqcs$eqcs), ]  # it may happen that "1_1" is empty
         monotone_eqcs[, eqcs := group_lookup$reordered[match(monotone_eqcs$eqcs, group_lookup$groups)]]
         setorderv(monotone_eqcs, "eqcs")
         self$monotone_eqcs = monotone_eqcs
