@@ -18,6 +18,7 @@ RhpcBLASctl::blas_set_num_threads(1L)
 RhpcBLASctl::omp_set_num_threads(1L)
 
 eval_ = function(job, data, instance, ...) {
+  library(data.table)
   library(mlr3)
   library(mlr3learners)
   library(mlr3pipelines)
@@ -28,9 +29,7 @@ eval_ = function(job, data, instance, ...) {
   library(bbotk)
   library(iaml)
   library(data.table)
-  # FIXME: EBmlr3
 
-  data.table::setDTthreads(1L)
   RhpcBLASctl::blas_set_num_threads(1L)
   RhpcBLASctl::omp_set_num_threads(1L)
 
@@ -46,15 +45,15 @@ eval_ = function(job, data, instance, ...) {
   method = job$algo.pars$method
 
   results = if (method == "gagga") {
-    nested_resampling_gagga(task_train, task_test = task_test, resampling_inner = resampling_inner, n_evals = 230)
+    nested_resampling_gagga(task_train, task_test = task_test, resampling_inner = resampling_inner, n_evals = 230L)
   } else if (method == "xgboost") {
-    nested_resampling_xgboost(task_train, task_test = task_test, resampling_inner = resampling_inner, n_evals = 230)
+    nested_resampling_xgboost(task_train, task_test = task_test, resampling_inner = resampling_inner, n_evals = 230L)
   } else if (method == "ebm") {
     reticulate::use_condaenv("EBmlr3", required = TRUE)
     library(EBmlr3)
-    nested_resampling_ebm(task_train, task_test = task_test, resampling_inner = resampling_inner, n_evals = 230)
+    nested_resampling_ebm(task_train, task_test = task_test, resampling_inner = resampling_inner, n_evals = 230L)
   } else if (method == "glmnet") {
-    nested_resampling_glmnet(task_train, task_test = task_test, resampling_inner = resampling_inner, n_evals = 230)
+    nested_resampling_glmnet(task_train, task_test = task_test, resampling_inner = resampling_inner, n_evals = 230L)
   } else if (method == "rf") {
     random_forest(task_train, task_test = task_test)
   }
@@ -62,15 +61,18 @@ eval_ = function(job, data, instance, ...) {
 }
 
 library(batchtools)
-reg = makeExperimentRegistry(file.dir = "/gscratch/lschnei8/registry_iaml_prototype_ours_so", source = source_files)
+reg = makeExperimentRegistry(file.dir = "/gscratch/lschnei8/registry_iaml_prototype_ours_so_parallel", source = source_files)
 #reg = makeExperimentRegistry(file.dir = NA)
 saveRegistry(reg)
 
-ids = c(359955, 189922, 359962, 190392, 167120, 190137, 190410, 168350, 359975, 359972, 146820)
-tasks = map(ids, function(id) {  # FIXME: discuss this
+ids = c(37, 43, 3903, 3913, 3918, 10093, 9946, 146819, 359955, 189922, 359962, 190392, 167120, 190137, 190410, 168350, 359975, 359972, 146820)
+tasks = map(ids, function(id) {
   task = tsk("oml", task_id = id)
   task
 })
+#checks = map_lgl(tasks, function(task) {
+#  all(c("factor", "ordered", "logical", "POSIXct", "character") %nin% unique(task$feature_types)) && sum(task$missings()) == 0L && sum(apply(task$data(cols = task$feature_names), 2, function(x) length(unique(x)) <= 2)) == 0L
+#})
 resamplings_outer = map(seq_along(ids), function(i) {
   id = ids[[i]]
   set.seed(id)
@@ -112,33 +114,43 @@ for (method in c("gagga", "xgboost", "ebm", "glmnet", "rf")) {
   ids = addExperiments(
       prob.designs = prob_designs,
       algo.designs = list(eval_ = data.table(method = method)),
-      repls = 1L
+      repls = 10L
   )
   addJobTags(ids, method)
 }
 
-# gagga, xgboost and ebm 32 GB ram on problem 4 64 gb
 # standard resources used to submit jobs to cluster
 # FIXME: use actual time needed
 resources.serial.default = list(
-  walltime = 3600L * 24L * 6L, memory = 1024L * 64L, max.concurrent.jobs = 9999L
+  max.concurrent.jobs = 9999L, ncpus = 1L
 )
 
-jobs = findJobs()
+jobs = getJobTable()
+jobs[, memory := 1024L * 32L]
+jobs[, walltime := 3600L * 24L * 3L]
+jobs[tags == "gagga" | tags == "xgboost" | tags == "ebm", memory := 1024L * 64L]
+jobs[tags == "gagga" | tags == "xgboost" | tags == "ebm", walltime := 3600L * 24L * 6L]
+jobs[problem == 10 | problem == 12 | problem == 13 | problem == 15, memory := 1024L * 128L]
+jobs = jobs[, c("job.id", "memory", "walltime")]
 submitJobs(jobs, resources = resources.serial.default)
+
+expired = jobs[job.id %in% findExpired()$job.id]
+expired[, memory := 131072L]
+expired[tab[job.id %in% expired$job.id]$tags == "ebm", memory := 262144L]
+submitJobs(expired, resources = resources.serial.default)
 
 #######################################################################################################################################################################################################
 
 tab = getJobTable()
 tab = tab[job.id %in% findDone()$job.id]
 results = reduceResultsDataTable(tab$job.id, fun = function(x, job) {
-  data = x[, c("classif.ce", "iaml_selected_features_proxy", "iaml_selected_interactions_proxy", "iaml_selected_non_monotone_proxy", "batch_nr"), with = FALSE]
-  data[, actually_used := job$prob.pars$actually_used]
+  data = x
+  data[, tuning_data := NULL]
   data[, task_id := job$prob.pars$id]
-  data[, method := job$algo.pars$optimizer]
+  data[, method := job$algo.pars$method]
   data[, repl := job$repl]
   data
 })
 results = rbindlist(results$result, fill = TRUE)
-saveRDS(results, "/gscratch/lschnei8/iaml_prototype_new.rds")
+saveRDS(results, "/gscratch/lschnei8/iaml_prototype_ours_so.rds")
 
