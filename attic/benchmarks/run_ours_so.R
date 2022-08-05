@@ -39,10 +39,18 @@ eval_ = function(job, data, instance, ...) {
   logger$set_threshold("warn")
   future::plan("sequential")
 
-  task_train = instance$task_train
-  task_test = instance$task_test
-  resampling_inner = instance$resampling_inner
+  task = instance$task
+  repl = job$repl
+  set.seed(repl)  # same outer and inner resampling for all methods given a repl on a task
+  resampling_outer = rsmp("holdout", ratio = 2/3)$instantiate(task)
+  train_set = resampling_outer$train_set(1L)
+  test_set = resampling_outer$test_set(1L)
+  task_train = task$clone(deep = TRUE)$filter(rows = train_set)
+  task_test = task$clone(deep = TRUE)$filter(rows = test_set)
+  resampling_inner = rsmp("cv", folds = 10L)$instantiate(task_train)
+ 
   method = job$algo.pars$method
+  set.seed(job$seed) 
 
   results = if (method == "gagga") {
     nested_resampling_gagga(task_train, task_test = task_test, resampling_inner = resampling_inner, n_evals = 230L)
@@ -61,7 +69,7 @@ eval_ = function(job, data, instance, ...) {
 }
 
 library(batchtools)
-reg = makeExperimentRegistry(file.dir = "/gscratch/lschnei8/registry_iaml_prototype_ours_so_parallel", source = source_files)
+reg = makeExperimentRegistry(file.dir = "/gscratch/lschnei8/registry_iaml_prototype_ours_so", source = source_files)
 #reg = makeExperimentRegistry(file.dir = NA)
 saveRegistry(reg)
 
@@ -73,29 +81,8 @@ tasks = map(ids, function(id) {
 #checks = map_lgl(tasks, function(task) {
 #  all(c("factor", "ordered", "logical", "POSIXct", "character") %nin% unique(task$feature_types)) && sum(task$missings()) == 0L && sum(apply(task$data(cols = task$feature_names), 2, function(x) length(unique(x)) <= 2)) == 0L
 #})
-resamplings_outer = map(seq_along(ids), function(i) {
-  id = ids[[i]]
-  set.seed(id)
-  rsmp("holdout", ratio = 2/3)$instantiate(tasks[[i]])
-})
-tasks_train = map(seq_along(ids), function(i) {
-  train_set = resamplings_outer[[i]]$train_set(1L)
-  task_train = tasks[[i]]$clone(deep = TRUE)$filter(rows = train_set)
-  task_train
-})
-tasks_test = map(seq_along(ids), function(i) {
-  test_set = resamplings_outer[[i]]$test_set(1L)
-  task_test = tasks[[i]]$clone(deep = TRUE)$filter(rows = test_set)
-  task_test
-})
-resamplings_inner =  map(seq_along(ids), function(i) {
-  id = ids[[i]]
-  set.seed(id)
-  resampling_inner = rsmp("cv", folds = 10L)$instantiate(tasks_train[[i]])
-  resampling_inner
-})
 
-instances = data.table(id = ids, task = tasks, resampling_outer = resamplings_outer, task_train = tasks_train, task_test = tasks_test, resampling_inner = resamplings_inner)
+instances = data.table(id = ids, task = tasks)
 instances[, id_plan := 1:.N]
 
 # add problems
@@ -120,17 +107,26 @@ for (method in c("gagga", "xgboost", "ebm", "glmnet", "rf")) {
 }
 
 # standard resources used to submit jobs to cluster
-# FIXME: use actual time needed
 resources.serial.default = list(
   max.concurrent.jobs = 9999L, ncpus = 1L
 )
 
+#tab = getJobTable()
+#time = tab[, c("job.id", "time.running", "problem")]
+#time[, method := tab$tags]
+#time = time[, .(walltime = max(as.numeric(time.running))), by = .(problem, method)]
+#time = time[walltime < 60, walltime := 60]
+#time = time[, walltime := round(1.10 * walltime)]
+#time[is.na(walltime), walltime := 7L * 24L * 3600L]
+#saveRDS(time, "time_ours_so.rds")
+
 jobs = getJobTable()
+time = readRDS("time_ours_so.rds")
+jobs[, method := jobs$tags]
 jobs[, memory := 1024L * 32L]
-jobs[, walltime := 3600L * 24L * 3L]
 jobs[tags == "gagga" | tags == "xgboost" | tags == "ebm", memory := 1024L * 64L]
-jobs[tags == "gagga" | tags == "xgboost" | tags == "ebm", walltime := 3600L * 24L * 6L]
 jobs[problem == 10 | problem == 12 | problem == 13 | problem == 15, memory := 1024L * 128L]
+jobs = merge(jobs, time, by = c("problem", "method"))
 jobs = jobs[, c("job.id", "memory", "walltime")]
 submitJobs(jobs, resources = resources.serial.default)
 
