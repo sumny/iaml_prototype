@@ -9,6 +9,7 @@ IAMLPointNEW = R6Class("IAMLPoint",
       assert_data_table(scores, null.ok = TRUE)
       assert_r6(interaction_detector, classes = "InteractionDetector", null.ok = TRUE)
       assert_data_table(unconstrained_weight_table, null.ok = TRUE)
+      assert_flag(unconstrained)
       feature_names = sort(task$feature_names)  # NOTE: we assume that features in the task will be sorted alphabetically prior to training, e.g., via PipeOpSortFeatures
       n_features = length(feature_names)
       self$feature_names = feature_names
