@@ -50,26 +50,26 @@ eval_ = function(job, data, instance, ...) {
   resampling_inner = rsmp("cv", folds = 10L)$instantiate(task_train)
  
   method = job$algo.pars$method
+  # IAML: (crossover FALSE, mutation FALSE, both FALSE, both TRUE) x use_detectors (TRUE / FALSE); both TRUE + use_detectors TRUE not needed
+  #       random (TRUE, FALSE) x use_detectors (TRUE, FALSE); random FALSE + use_detectors TRUE not needed
+  # FIXME:
+  crossover = job$algo.pars$crossover
+  mutation = job$algo.pars$mutation
+  random = job$algo.pars$random
+  detectors = job$algo.pars$detectors
+
   set.seed(job$seed) 
 
-  results = if (method == "gagga") {
-    nested_resampling_gagga(task_train, task_test = task_test, resampling_inner = resampling_inner, n_evals = 230L)
-  } else if (method == "xgboost") {
-    nested_resampling_xgboost(task_train, task_test = task_test, resampling_inner = resampling_inner, n_evals = 230L)
-  } else if (method == "ebm") {
-    reticulate::use_condaenv("EBmlr3", required = TRUE)
-    library(EBmlr3)
-    nested_resampling_ebm(task_train, task_test = task_test, resampling_inner = resampling_inner, n_evals = 230L)
-  } else if (method == "glmnet") {
-    nested_resampling_glmnet(task_train, task_test = task_test, resampling_inner = resampling_inner, n_evals = 230L)
-  } else if (method == "rf") {
-    random_forest(task_train, task_test = task_test)
+  results = if (method == "gagga_ablation") {
+    nested_resampling_gagga_ablation(task_train, task_test = task_test, resampling_inner = resampling_inner, crossover = crossover, mutation = mutation, random = random, detectors = detectors, n_evals = 230L)
+  } else if (method == "xgboost_mo") {
+    nested_resampling_xgboost_mo(task_train, task_test = task_test, resampling_inner = resampling_inner, n_evals = 230L)
   }
   results
 }
 
 library(batchtools)
-reg = makeExperimentRegistry(file.dir = "/gscratch/lschnei8/registry_iaml_prototype_ours_so", source = source_files)
+reg = makeExperimentRegistry(file.dir = "/gscratch/lschnei8/registry_iaml_prototype_ablation", source = source_files)
 #reg = makeExperimentRegistry(file.dir = NA)
 saveRegistry(reg)
 
@@ -96,14 +96,23 @@ names(prob_designs) = nn
 
 # add eval_ algorithm (never use `eval` as a function name or have a function named `eval` in .GlobalEnv)
 addAlgorithm("eval_", fun = eval_)
+ablation1 = as.data.table(expand.grid(method = "gagga_ablation", crossover = c(TRUE, FALSE), mutation = c(TRUE, FALSE), detectors = c(TRUE, FALSE)))[-1L, ]  # TRUE, TRUE, TRUE is default
+ablation2 = as.data.table(expand.grid(method = "gagga_ablation", random = c(TRUE, FALSE), detectors = c(TRUE, FALSE)))[-2L, ]  # FALSE, TRUE is default
+ablation3 = data.table(method = "xgboost_mo")
+# NAs get default
+ablation = rbind(ablation1, ablation2, ablation3, fill = TRUE)
+ablation[is.na(crossover), crossover := TRUE]
+ablation[is.na(mutation), mutation := TRUE]
+ablation[is.na(detectors), detectors := TRUE]
+ablation[is.na(random), random := FALSE]
 
-for (method in c("gagga", "xgboost", "ebm", "glmnet", "rf")) {
+for (i in seq_len(nrow(ablation))) {
   ids = addExperiments(
       prob.designs = prob_designs,
-      algo.designs = list(eval_ = data.table(method = method)),
+      algo.designs = list(eval_ = ablation[i, ]),
       repls = 10L
   )
-  addJobTags(ids, method)
+  addJobTags(ids, as.character(ablation[i, ]$method))
 }
 
 # standard resources used to submit jobs to cluster

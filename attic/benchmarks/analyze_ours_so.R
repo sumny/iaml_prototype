@@ -11,7 +11,8 @@ ref = t(t(c(1, 1, 1, 1)))
 hvs = map_dtr(unique(dat$task_id), function(task_id_) {
   map_dtr(unique(dat$repl), function(repl_) {
     tmp = dat[task_id == task_id_ & repl == repl_]
-      if (nrow(tmp) != 5L) {
+      #if (nrow(tmp) != 5L) {
+      if (nrow(tmp) < 2L | "gagga" %nin% tmp$method) {
         return(data.table())
       }
       gagga = tmp[method == "gagga"]$pareto[[1L]][, c("ce_test", "iaml_selected_features_proxy", "iaml_selected_interactions_proxy", "iaml_selected_non_monotone_proxy")]
@@ -39,7 +40,8 @@ ggplot(aes(x = task_id, y = mean_hv, colour = method), data = mean_hvs) +
 is_dominated = map_dtr(unique(dat$task_id), function(task_id_) {
   map_dtr(unique(dat$repl), function(repl_) {
     tmp = dat[task_id == task_id_ & repl == repl_]
-    if (nrow(tmp) != 5L) {
+    #if (nrow(tmp) != 5L) {
+    if (nrow(tmp) < 2L | "gagga" %nin% tmp$method) {
       return(data.table())
     }
     gagga = tmp[method == "gagga"]$pareto[[1L]][, c("ce_test", "iaml_selected_features_proxy", "iaml_selected_interactions_proxy", "iaml_selected_non_monotone_proxy")]
@@ -48,6 +50,9 @@ is_dominated = map_dtr(unique(dat$task_id), function(task_id_) {
     map_dtr(c("xgboost", "ebm", "glmnet", "rf"), function(method_) {
       other = tmp[method == method_, c("ce_test", "iaml_selected_features_proxy", "iaml_selected_interactions_proxy", "iaml_selected_non_monotone_proxy")]
       #other = tmp[method == method_, c("ce_test", "iaml_selected_features_proxy", "iaml_selected_interactions_proxy")]
+      if (nrow(other) == 0L) {
+        return(data.table())
+      }
       data.table(is_dominated = is_dominated(t(rbind(gagga, other)))[n_gagga + 1L], method = method_, repl = repl_, task_id = task_id_)
     })
   })
@@ -63,12 +68,16 @@ get_nearest = function(gagga, y, objective = "ce_test") {
 performance_change = map_dtr(unique(dat$task_id), function(task_id_) {
   map_dtr(unique(dat$repl), function(repl_) {
     tmp = dat[task_id == task_id_ & repl == repl_]
-    if (nrow(tmp) != 5L) {
+    #if (nrow(tmp) != 5L) {
+    if (nrow(tmp) < 2L | "gagga" %nin% tmp$method) {
       return(data.table())
     }
     gagga = tmp[method == "gagga"]$pareto[[1L]][, c("ce_test", "iaml_selected_features_proxy", "iaml_selected_interactions_proxy", "iaml_selected_non_monotone_proxy")]
     map_dtr(c("xgboost", "ebm", "glmnet", "rf"), function(method_) {
       other = tmp[method == method_, c("ce_test", "iaml_selected_features_proxy", "iaml_selected_interactions_proxy", "iaml_selected_non_monotone_proxy")]
+      if (nrow(other) == 0L) {
+        return(data.table())
+      }
       cbind(other - get_nearest(gagga, y = other), method = method_, repl = repl_, task_id = task_id_)
     })
   })
@@ -107,7 +116,8 @@ mean_mean_performance_change = mean_performance_change[, .(mean_ce_test = mean(m
 best = map_dtr(unique(dat$task_id), function(task_id_) {
   map_dtr(unique(dat$repl), function(repl_) {
     tmp = dat[task_id == task_id_ & repl == repl_]
-      if (nrow(tmp) != 5L) {
+      #if (nrow(tmp) != 5L) {
+      if (nrow(tmp) < 2L | "gagga" %nin% tmp$method) {
         return(data.table())
       }
       gagga = tmp[method == "gagga"]$pareto[[1L]][, c("ce_test", "iaml_selected_features_proxy", "iaml_selected_interactions_proxy", "iaml_selected_non_monotone_proxy")]
@@ -125,19 +135,18 @@ mean_best = best[, .(mean_ce_test = mean(ce_test), se_ce_test = sd(ce_test) / sq
                      mean_iaml_selected_features_proxy = mean(iaml_selected_features_proxy), se_iaml_selected_features_proxy = sd(iaml_selected_features_proxy) / sqrt(.N),
                      mean_iaml_selected_interactions_proxy = mean(iaml_selected_interactions_proxy), se_iaml_selected_interactions_proxy = sd(iaml_selected_interactions_proxy) / sqrt(.N),
                      mean_iaml_selected_non_monotone_proxy = mean(iaml_selected_non_monotone_proxy), se_iaml_selected_non_monotone_proxy = sd(iaml_selected_non_monotone_proxy) / sqrt(.N)), by = .(method, task_id)]
+mean_best[, mf := as.numeric(as.factor(method)), by = .(task_id)]
+mean_best[, text_space := mf + 0.5]
+mean_best[method == "xgboost", text_space := mf - 0.5]
 mean_best[, method := as.factor(method)]
-mean_best[, text_space := as.numeric(method) + 0.5]
-mean_best[method == "xgboost", text_space := as.numeric(method) - 0.5]
-
 
 ggplot(aes(x = method, y = mean_ce_test, colour = method), data = mean_best) +
   geom_point() +
   geom_errorbar(aes(ymin = mean_ce_test - se_ce_test, ymax = mean_ce_test + se_ce_test), width = 0.2) +
-  geom_text(aes(x = text_space, y = mean_ce_test, label = paste0(round(mean_iaml_selected_features_proxy, 2), "/", round(mean_iaml_selected_interactions_proxy, 2), "/", round(mean_iaml_selected_non_monotone_proxy, 2))), size = 3) +
+  geom_text(aes(x = text_space, y = mean_ce_test, label = paste0(format(round(mean_iaml_selected_features_proxy, 2), nsmall = 2), "/", format(round(mean_iaml_selected_interactions_proxy, 2), nsmall = 2), "/", format(round(mean_iaml_selected_non_monotone_proxy, 2), nsmall = 2))), size = 3) +
   facet_wrap(~ task_id, scales = "free") +
   labs(y = "Mean Classification Error", x = "", colour = "Method") +
   theme_minimal()
-
 
 mean_mean_best = mean_best[, .(mean_ce_test = mean(mean_ce_test), se_ce_test = sd(mean_ce_test) / sqrt(.N),
                                mean_iaml_selected_features_proxy = mean(mean_iaml_selected_features_proxy), se_iaml_selected_features_proxy = sd(mean_iaml_selected_features_proxy) / sqrt(.N),

@@ -26,6 +26,7 @@
   x$add("iaml", TunerIAML)
   x$add("iaml_ea", TunerIAMLEA)
   x$add("iaml_ea_new", TunerIAMLEANEW)
+  x$add("iaml_ea_ablation", TunerIAMLEAX)
 
 
   # add iaml to measures dictionary
