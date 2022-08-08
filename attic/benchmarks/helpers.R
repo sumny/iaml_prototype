@@ -326,7 +326,7 @@ nested_resampling_gagga_ablation = function(task_train, task_test, resampling_in
 
   terminator = trm("combo", list(trm("evals", n_evals = n_evals), trm("run_time", secs = secs)))
 
-  search_space = get_xgboost_search_space_eawm()
+  search_space = get_xgboost_search_space_gagga()
 
   instance = TuningInstanceMultiCrit$new(
     task = task_train,

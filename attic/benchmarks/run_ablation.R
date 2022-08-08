@@ -53,10 +53,10 @@ eval_ = function(job, data, instance, ...) {
   # IAML: (crossover FALSE, mutation FALSE, both FALSE, both TRUE) x use_detectors (TRUE / FALSE); both TRUE + use_detectors TRUE not needed
   #       random (TRUE, FALSE) x use_detectors (TRUE, FALSE); random FALSE + use_detectors TRUE not needed
   # FIXME:
-  crossover = job$algo.pars$crossover
-  mutation = job$algo.pars$mutation
-  random = job$algo.pars$random
-  detectors = job$algo.pars$detectors
+  crossover = isTRUE(job$algo.pars$crossover)
+  mutation = isTRUE(job$algo.pars$mutation)
+  random = isTRUE(job$algo.pars$random)
+  detectors = isTRUE(job$algo.pars$detectors)
 
   set.seed(job$seed) 
 
@@ -101,10 +101,6 @@ ablation2 = as.data.table(expand.grid(method = "gagga_ablation", random = c(TRUE
 ablation3 = data.table(method = "xgboost_mo")
 # NAs get default
 ablation = rbind(ablation1, ablation2, ablation3, fill = TRUE)
-ablation[is.na(crossover), crossover := TRUE]
-ablation[is.na(mutation), mutation := TRUE]
-ablation[is.na(detectors), detectors := TRUE]
-ablation[is.na(random), random := FALSE]
 
 for (i in seq_len(nrow(ablation))) {
   ids = addExperiments(
@@ -120,20 +116,10 @@ resources.serial.default = list(
   max.concurrent.jobs = 9999L, ncpus = 1L
 )
 
-#tab = getJobTable()
-#time = tab[, c("job.id", "time.running", "problem")]
-#time[, method := tab$tags]
-#time = time[, .(walltime = max(as.numeric(time.running))), by = .(problem, method)]
-#time = time[walltime < 60, walltime := 60]
-#time = time[, walltime := round(1.10 * walltime)]
-#time[is.na(walltime), walltime := 7L * 24L * 3600L]
-#saveRDS(time, "time_ours_so.rds")
-
 jobs = getJobTable()
 time = readRDS("time_ours_so.rds")
-jobs[, method := jobs$tags]
-jobs[, memory := 1024L * 32L]
-jobs[tags == "gagga" | tags == "xgboost" | tags == "ebm", memory := 1024L * 64L]
+jobs[, method := "gagga"]  # all comparable runtime
+jobs[, memory := 1024L * 64L]
 jobs[problem == 10 | problem == 12 | problem == 13 | problem == 15, memory := 1024L * 128L]
 jobs = merge(jobs, time, by = c("problem", "method"))
 jobs = jobs[, c("job.id", "memory", "walltime")]
@@ -154,6 +140,10 @@ results = reduceResultsDataTable(tab$job.id, fun = function(x, job) {
   data[, tuning_data := NULL]
   data[, task_id := job$prob.pars$id]
   data[, method := job$algo.pars$method]
+  data[, crossover := job$algo.pars$crossover]
+  data[, mutation := job$algo.pars$mutation]
+  data[, detectors := job$algo.pars$detectors]
+  data[, random := job$algo.pars$random]
   data[, repl := job$repl]
   data
 })
