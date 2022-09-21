@@ -89,9 +89,11 @@ Use \code{lgr::get_logger("bbotk")} to access and control the logger.
 
 \seealso{
 Other Tuner: 
+\code{\link{mlr_tuner_iaml_eax}},
 \code{\link{mlr_tuner_iaml}}
 
 Other Tuner: 
+\code{\link{mlr_tuner_iaml_eax}},
 \code{\link{mlr_tuner_iaml}}
 }
 \concept{Tuner}

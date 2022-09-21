@@ -134,7 +134,20 @@ submitJobs(expired, resources = resources.serial.default)
 #######################################################################################################################################################################################################
 
 tab = getJobTable()
-tab = tab[job.id %in% findDone()$job.id]
+tab = tab[job.id %in% findDone()$job.id & tags == "xgboost_mo"]
+results = reduceResultsDataTable(tab$job.id, fun = function(x, job) {
+  data = x
+  data[, tuning_data := NULL]
+  data[, task_id := job$prob.pars$id]
+  data[, method := job$algo.pars$method]
+  data[, repl := job$repl]
+  data
+})
+results = rbindlist(results$result, fill = TRUE)
+saveRDS(results, "/gscratch/lschnei8/iaml_prototype_ablation_xgboost_mo.rds")
+
+tab = getJobTable()
+tab = tab[job.id %in% findDone()$job.id & tags == "gagga_ablation"]
 results = reduceResultsDataTable(tab$job.id, fun = function(x, job) {
   data = x
   data[, tuning_data := NULL]
@@ -148,5 +161,5 @@ results = reduceResultsDataTable(tab$job.id, fun = function(x, job) {
   data
 })
 results = rbindlist(results$result, fill = TRUE)
-saveRDS(results, "/gscratch/lschnei8/iaml_prototype_ours_so.rds")
+saveRDS(results, "/gscratch/lschnei8/iaml_prototype_ablation_gagga.rds")
 

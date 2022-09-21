@@ -186,14 +186,73 @@ calculateGain <- function(xgb.model) {
   return(treeList)
 }
 
-tableOfTrees <- function(model) {
+tableOfTrees <- function(model, ...) {
   count <- split_feature <- leaf_count <- internal_count <-
     split_index <- tree_index <- leaf_index <- threshold <-
     leaf_value <- split_gain <- flag <- node_parent <- leaf_parent<-
     Node <- Feature <- . <- Cover <- Yes <- No <- ID <-
     Tree<- Quality <- Missing <-Leaf_old_num<- Split <- NULL
   if(class(model)[1] == "xgb.Booster") {
-    return(xgb_model_dt_tree(model = model)[])
+    return(xgb_model_dt_tree(model = model, ...)[])
   }
 }
+
+# walk up a leaf in an xgboost tree to get its feature region (min max corners for each feature)
+walk_up_leaf = function(leaf_id, tree, model) {
+  node_to_check_leaf = leaf_id
+  min_feature_value_leaf = setNames(rep(-Inf, length(model$feature_names)), model$feature_names)
+  max_feature_value_leaf = setNames(rep(Inf, length(model$feature_names)), model$feature_names)
   
+  tmp = tree[Yes == node_to_check_leaf | No == node_to_check_leaf | Missing == node_to_check_leaf]
+  while(nrow(tmp) > 0) {
+    stopifnot(nrow(tmp) == 1)
+    if (tmp$Yes == node_to_check_leaf) {
+      if (tmp$Split < max_feature_value_leaf[tmp$Feature]) {
+        max_feature_value_leaf[tmp$Feature] = tmp$Split
+      }
+    } else if (tmp$No == node_to_check_leaf) {
+      if (tmp$Split > min_feature_value_leaf[tmp$Feature]) {
+        min_feature_value_leaf[tmp$Feature] = tmp$Split
+      }
+    }
+    node_to_check_leaf = tmp$Node
+    tmp = tree[Yes == node_to_check_leaf | No == node_to_check_leaf | Missing == node_to_check_leaf]
+  }
+  list(min = min_feature_value_leaf, max = max_feature_value_leaf)
+}
+
+# check whether an xgboost tree is not monotone
+monotonicity_violated = function(model) {
+  # https://www.kdd.org/exploration_files/potharst.pdf
+  trees = tableOfTrees(model, use_int_id = TRUE)
+  any(unlist(
+    map(unique(trees$Tree), function(tree_id) {
+      tree = trees[Tree == tree_id]
+      leaves = tree[Feature == "Leaf"]
+      leaf_ids = leaves$Node
+      min_max_per_leaf = map(leaf_ids, function(leaf_id) {
+        walk_up_leaf(leaf_id, tree = tree, model = model)
+      })
+      names(min_max_per_leaf) = leaf_ids
+
+      not_monotone = map(leaf_ids, function(leaf_id1) {
+        value1 = leaves[Node == leaf_id1, Quality]
+        # value1 > value2 but min_value1 < max_value2 --> violates
+        potential_leaves2 = leaves[Quality < value1, Node]
+        not_monotone1  = map(potential_leaves2, function(leaf_id2) {
+          #names(which(min_max_per_leaf[[as.character(leaf_id1)]]$min < min_max_per_leaf[[as.character(leaf_id2)]]$max))
+          all(min_max_per_leaf[[as.character(leaf_id1)]]$min < min_max_per_leaf[[as.character(leaf_id2)]]$max)
+        })
+        # value1 < value2 but max_value1 > min_value2 --> violates
+        potential_leaves2 = leaves[Quality > value1, Node]
+        not_monotone2 = map(potential_leaves2, function(leaf_id2) {
+          #names(which(min_max_per_leaf[[as.character(leaf_id1)]]$max > min_max_per_leaf[[as.character(leaf_id2)]]$min))
+          all(min_max_per_leaf[[as.character(leaf_id1)]]$max > min_max_per_leaf[[as.character(leaf_id2)]]$min)
+        })
+        unlist(not_monotone1, not_monotone2)
+      })
+      unlist(not_monotone)
+    })
+  ))
+}
+

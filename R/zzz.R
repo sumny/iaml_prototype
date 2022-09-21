@@ -16,6 +16,7 @@
 #' @import xgboost
 #' @import progress
 #' @importFrom stats setNames runif dnorm pnorm rnorm
+#' @importFrom R.utils withTimeout
 
 .onLoad = function(libname, pkgname) { # nolint
   # nocov start

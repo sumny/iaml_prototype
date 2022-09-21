@@ -61,15 +61,17 @@ MonotonicityDetector = R6Class("MonotonicityDetectorDetector",
   #active = list(
   #),
   private = list(
-    .compute_aic = function(x_name) {
+    .compute_aic = function(x_name, fraction = 2/3, seed = NULL) {
       control = scam.control(maxit = 10L, devtol.fit = 1e-4, steptol.fit = 1e-4)  # quite permissive fitting parameters; we do not need to be that precise
       fam = if (self$classification) binomial() else gaussian()
       form = as.formula(paste0(self$y_name, " ~ ", "s(", x_name, ")"))
-      s = tryCatch(scam(formula = form, family = fam, data = self$data, control = control), error = function(ec) NULL)
+      # FIXME: changed 16.08.2022 after benchmarks
+      data = self$data[sample(seq_len(.N), size = ceiling(2/3 * .N), replace = TRUE), ]
+      s = tryCatch(withTimeout(scam(formula = form, family = fam, data = self$data, control = control), elapsed = 60L), error = function(ec) NULL)
       form_inc = as.formula(paste0(self$y_name, " ~ ", "s(", x_name, ", bs = 'mpi')"))
-      s_inc = tryCatch(scam(formula = form_inc, family = fam, data = self$data, control = control), error = function(ec) NULL)
+      s_inc = tryCatch(withThimeout(scam(formula = form_inc, family = fam, data = self$data, control = control), elapsed = 60L), error = function(ec) NULL)
       form_decr = as.formula(paste0(self$y_name, " ~ ", "s(", x_name, ", bs = 'mpd')"))
-      s_decr = tryCatch(scam(formula = form_decr, family = fam, data = self$data, control = control), error = function(ec) NULL)
+      s_decr = tryCatch(withTimeout(scam(formula = form_decr, family = fam, data = self$data, control = control), elapsed = 60L), error = function(ec) NULL)
 
       aic_ = tryCatch(AIC(s), error = function(ec) Inf)
       aic_increasing_ = tryCatch(AIC(s_inc), error = function(ec) Inf)

@@ -43,16 +43,31 @@ get_xgboost_search_space = function() {
   )
 }
 
+# old 19.09.2022
+#get_ebm_search_space = function(n_features) {
+#  ps(
+#    interactions = p_int(lower = 0L, upper = max(c(10L, ceiling(sqrt((n_features * (n_features - 1L)) / 2L)))), default = 10L),
+#    outer_bags = p_int(lower = 1L, upper = 10L, default = 8L),
+#    learning_rate = p_dbl(lower = log(1e-4), upper = 0, tags = "log",
+#                          trafo = function(x) exp(x), default = log(0.01)),
+#    max_rounds = p_dbl(lower = log(1), upper = log(5000), tags = c("int", "log"),
+#                       trafo = function(x) as.integer(round(exp(x))), default = log(5000)),
+#    min_samples_leaf = p_int(lower = 1L, upper = 100L, default = 2L),
+#    max_leaves = p_int(lower = 1L, upper = 5L, default = 3L)  # 2 ^ 5L is maxdepth and 30 is reasonable upper limit
+#  )
+#}
+
+# new 19.09.2022
+# https://interpret.ml/docs/faq.html
 get_ebm_search_space = function(n_features) {
   ps(
     interactions = p_int(lower = 0L, upper = max(c(10L, ceiling(sqrt((n_features * (n_features - 1L)) / 2L)))), default = 10L),
-    outer_bags = p_int(lower = 1L, upper = 10L, default = 8L),
-    learning_rate = p_dbl(lower = log(1e-4), upper = 0, tags = "log",
-                          trafo = function(x) exp(x), default = log(0.01)),
-    max_rounds = p_dbl(lower = log(1), upper = log(5000), tags = c("int", "log"),
-                       trafo = function(x) as.integer(round(exp(x))), default = log(5000)),
-    min_samples_leaf = p_int(lower = 1L, upper = 100L, default = 2L),
-    max_leaves = p_int(lower = 1L, upper = 5L, default = 3L)  # 2 ^ 5L is maxdepth and 30 is reasonable upper limit
+    outer_bags = p_int(lower = 25L, upper = 30L, default = 25L),
+    inner_bags = p_int(lower = 25L, upper = 30L, default = 25L),
+    max_rounds = p_fct(levels = c("5000", "10000"), tags = "int",
+                       trafo = function(x) as.integer(x), default = "5000"),
+    max_leaves = p_int(lower = 2L, upper = 5L, default = 3L),  # 2 ^ 5L is maxdepth and 30 is reasonable upper limit
+    max_bins = p_int(lower = 2, upper = 10, default = 8, trafo = function(x) 2^x)  # tuned between 32 and 1024 on log2 scale
   )
 }
 

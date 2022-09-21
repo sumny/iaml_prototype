@@ -212,7 +212,7 @@ get_class_ids_from_incidence = function(x) {
 }
 
 # function to get the relative number of features used in a decision tree
-get_n_selected_rpart = function(task, repls = 100L) {
+get_n_selected_rpart = function(task, repls = 10L) {  # FIXME: changed 16.08.2022 after benchmarks
   assert_task(task)
   learner = if (task$task_type == "classif") {
     as_learner(po("subsample") %>>% lrn("classif.rpart"))
@@ -231,7 +231,7 @@ get_n_selected_rpart = function(task, repls = 100L) {
 }
 
 # function to get the relative number of pairwise interactions used in a decision tree
-get_n_interactions_rpart = function(task, repls = 100L) {
+get_n_interactions_rpart = function(task, repls = 10L) {  # FIXME: changed 16.08.2022 after benchmarks
   assert_task(task)
   features = sort(task$feature_names)
   n_features = length(features)
