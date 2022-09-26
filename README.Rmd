@@ -156,7 +156,7 @@ objectives related to, e.g., computational efficiency or fairness.
 
 Below, some example measures are given:
 
-```{r}
+```{r, eval = FALSE}
 msr("time_train")    # training time
 msr("time_predict")  # prediction time
 msr("time_both")     # both

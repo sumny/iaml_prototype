@@ -145,3 +145,22 @@ tuner$param_set$values$monotone_id = "classif.xgboost.monotone_constraints"  # p
 tuner$optimize(instance)
 instance$archive$best()  # Pareto optimal solutions
 ```
+
+## Optimizing additional objectives
+
+Besides optimizing for performance and interpretability as illustrated
+above, it may be of interest to optimize further objectives related to,
+e.g., computational efficiency or fairness.
+
+Below, some example measures are given:
+
+``` r
+msr("time_train")    # training time
+msr("time_predict")  # prediction time
+msr("time_both")     # both
+
+library(mlr3fairness)
+mlr_measures_fairness  # overview of fairness measures
+
+msr("fairness.eod")    # equalized odds
+```
