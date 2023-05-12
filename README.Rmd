@@ -6,6 +6,9 @@ output: github_document
 lgr::get_logger("mlr3")$set_threshold("warn")
 lgr::get_logger("bbotk")$set_threshold("warn")
 ```
+# DISCLAIMER
+
+This code base is to large parts superseded by [eagga](https://github.com/sumny/eagga) and therefore archived.
 
 # Interpretable (auto) ML within the mlr3 ecosystem via multi-objective optimization
 

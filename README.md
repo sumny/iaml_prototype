@@ -1,4 +1,9 @@
 
+# DISCLAIMER
+
+This code base is to large parts superseded by
+[eagga](https://github.com/sumny/eagga) and therefore archived.
+
 # Interpretable (auto) ML within the mlr3 ecosystem via multi-objective optimization
 
 ## Installation
